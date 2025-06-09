@@ -8,7 +8,7 @@ const db = new sqlite3.Database(path.join(__dirname, 'food_delivery.db'));
 // Initialize database
 function initializeDatabase() {
   db.serialize(() => {
-    // Users table for authentication (merchants, couriers, admins)
+    // Users table for authentication (merchants, couriers, admins)n
     db.run(`CREATE TABLE IF NOT EXISTS users (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       username TEXT UNIQUE NOT NULL,
