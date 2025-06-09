@@ -5,6 +5,76 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Admin Dashboard - Food Delivery System</title>
     <link rel="stylesheet" href="/css/style.css">
+    <style>
+        /* Additional styles for food items display */
+        .order-details-modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0,0,0,0.5);
+            z-index: 100;
+        }
+        
+        .modal-content {
+            background-color: white;
+            width: 80%;
+            max-width: 600px;
+            margin: 100px auto;
+            padding: 20px;
+            border-radius: 5px;
+        }
+        
+        .modal-close {
+            float: right;
+            font-size: 20px;
+            font-weight: bold;
+            cursor: pointer;
+        }
+        
+        .order-total {
+            font-weight: bold;
+            font-size: 18px;
+            margin-top: 10px;
+            text-align: right;
+        }
+        
+        .edit-form {
+            display: none;
+            margin-top: 20px;
+            padding: 15px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            background-color: #f9f9f9;
+        }
+        
+        .card-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+            gap: 20px;
+            margin-top: 20px;
+        }
+        
+        .restaurant-card {
+            background-color: white;
+            border-radius: 5px;
+            padding: 20px;
+            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+            position: relative;
+        }
+        
+        .card-actions {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+        }
+        
+        .user-edit-form {
+            display: none;
+        }
+    </style>
 </head>
 <body>
     <header>
@@ -70,6 +140,39 @@
                         </form>
                     </div>
                     
+                    <!-- Edit User Form -->
+                    <div id="edit-user-form" class="edit-form">
+                        <h3>Edit User</h3>
+                        <form id="user-edit-form">
+                            <input type="hidden" id="edit-user-id" name="user_id">
+                            <div class="form-group">
+                                <label for="edit-username">Username</label>
+                                <input type="text" id="edit-username" name="username" required>
+                            </div>
+                            <div class="form-group">
+                                <label for="edit-email">Email</label>
+                                <input type="email" id="edit-email" name="email" required>
+                            </div>
+                            <div class="form-group">
+                                <label for="edit-role">Role</label>
+                                <select id="edit-role" name="role" required>
+                                    <option value="customer">Customer</option>
+                                    <option value="merchant">Restaurant Owner</option>
+                                    <option value="courier">Delivery Person</option>
+                                    <option value="admin">Administrator</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label for="edit-password">New Password (leave blank to keep current)</label>
+                                <input type="password" id="edit-password" name="password">
+                            </div>
+                            <div class="form-group">
+                                <button type="submit" class="btn">Update User</button>
+                                <button type="button" id="cancel-edit-user" class="btn btn-cancel">Cancel</button>
+                            </div>
+                        </form>
+                    </div>
+                    
                     <h3>Users</h3>
                     <table class="data-table">
                         <thead>
@@ -104,6 +207,7 @@
                                 <th>Restaurant</th>
                                 <th>Due Time</th>
                                 <th>Status</th>
+                                <th>Total</th>
                                 <th>Actions</th>
                             </tr>
                         </thead>
@@ -111,6 +215,55 @@
                             <!-- Order rows will be loaded here -->
                         </tbody>
                     </table>
+                    
+                    <!-- Edit Order Form -->
+                    <div id="edit-order-form" class="edit-form">
+                        <h3>Edit Order</h3>
+                        <form id="order-edit-form">
+                            <input type="hidden" id="edit-order-id" name="order_id">
+                            <div class="form-group">
+                                <label for="edit-order-status">Status</label>
+                                <select id="edit-order-status" name="status" required>
+                                    <option value="pending">Pending</option>
+                                    <option value="accepted">Accepted</option>
+                                    <option value="in_transit">In Transit</option>
+                                    <option value="delivered">Delivered</option>
+                                    <option value="cancelled">Cancelled</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label for="edit-order-due-time">Due Time</label>
+                                <input type="datetime-local" id="edit-order-due-time" name="due_time" required>
+                            </div>
+                            <div class="form-group">
+                                <button type="submit" class="btn">Update Order</button>
+                                <button type="button" id="cancel-edit-order" class="btn btn-cancel">Cancel</button>
+                            </div>
+                        </form>
+                    </div>
+                    
+                    <!-- Order Details Modal -->
+                    <div id="order-details-modal" class="order-details-modal">
+                        <div class="modal-content">
+                            <span class="modal-close" onclick="closeOrderDetails()">&times;</span>
+                            <h3>Order Details</h3>
+                            <h4>Food Items</h4>
+                            <table class="data-table">
+                                <thead>
+                                    <tr>
+                                        <th>Item</th>
+                                        <th>Quantity</th>
+                                        <th>Price</th>
+                                        <th>Subtotal</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="order-items-table">
+                                    <!-- Items will be loaded here -->
+                                </tbody>
+                            </table>
+                            <div class="order-total">Total: $<span id="modal-order-total">0.00</span></div>
+                        </div>
+                    </div>
                 </div>
                 
                 <!-- Address Management Page -->
@@ -145,6 +298,37 @@
                             <div class="form-group">
                                 <button type="submit" class="btn">Add Address</button>
                                 <button type="button" id="cancel-add-address" class="btn btn-cancel">Cancel</button>
+                            </div>
+                        </form>
+                    </div>
+                    
+                    <!-- Edit Address Form -->
+                    <div id="edit-address-form" class="edit-form">
+                        <h3>Edit Address</h3>
+                        <form id="address-edit-form">
+                            <input type="hidden" id="edit-address-id" name="address_id">
+                            <div class="form-group">
+                                <label for="edit-address-name">Location Name</label>
+                                <input type="text" id="edit-address-name" name="name" required>
+                            </div>
+                            <div class="form-group">
+                                <label for="edit-is-restaurant">Type</label>
+                                <select id="edit-is-restaurant" name="is_restaurant" required>
+                                    <option value="0">Customer Location</option>
+                                    <option value="1">Restaurant Location</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label for="edit-latitude">Latitude</label>
+                                <input type="number" id="edit-latitude" name="latitude" step="0.0001" required>
+                            </div>
+                            <div class="form-group">
+                                <label for="edit-longitude">Longitude</label>
+                                <input type="number" id="edit-longitude" name="longitude" step="0.0001" required>
+                            </div>
+                            <div class="form-group">
+                                <button type="submit" class="btn">Update Address</button>
+                                <button type="button" id="cancel-edit-address" class="btn btn-cancel">Cancel</button>
                             </div>
                         </form>
                     </div>
@@ -185,31 +369,6 @@
                 console.error('Error initializing dashboard:', err);
                 window.location.href = '/login';
             }
-            
-            // Load addresses for address management
-            try {
-                const addressesResponse = await fetch('/api/addresses');
-                const addressesData = await addressesResponse.json();
-                
-                const addressesGrid = document.getElementById('addresses-grid');
-                addressesGrid.innerHTML = '';
-                
-                addressesData.forEach(address => {
-                    const card = document.createElement('div');
-                    card.className = 'restaurant-card';
-                    card.innerHTML = `
-                        <h4>${address.name}</h4>
-                        <p>${address.is_restaurant ? 'Restaurant' : 'Customer'}</p>
-                        <p>Lat: ${address.latitude.toFixed(4)}</p>
-                        <p>Long: ${address.longitude.toFixed(4)}</p>
-                    `;
-                    addressesGrid.appendChild(card);
-                });
-                
-            } catch (err) {
-                console.error('Error loading addresses:', err);
-                showMessage('address-message', 'Error loading addresses. Please try again later.');
-            }
         });
         
         // Function to load users with email field
@@ -235,8 +394,8 @@
                             <td>${user.role}</td>
                             <td>${formatDateTime(user.created_at)}</td>
                             <td>
-                                <button class="btn btn-small edit-user" data-id="${user.id}">Edit</button>
-                                <button class="btn btn-small delete-user" data-id="${user.id}">Delete</button>
+                                <button class="btn btn-small edit-user" data-id="${user.id}" data-username="${user.username}" data-email="${user.email}" data-role="${user.role}">Edit</button>
+                                <button class="btn btn-small btn-cancel delete-user" data-id="${user.id}">Delete</button>
                             </td>
                         `;
                         usersTable.appendChild(row);
@@ -244,16 +403,534 @@
                     
                     // Add event listeners for edit and delete
                     document.querySelectorAll('.edit-user').forEach(button => {
-                        button.addEventListener('click', () => editUser(button.getAttribute('data-id')));
+                        button.addEventListener('click', () => {
+                            const userId = button.getAttribute('data-id');
+                            const username = button.getAttribute('data-username');
+                            const email = button.getAttribute('data-email');
+                            const role = button.getAttribute('data-role');
+                            
+                            // Fill the edit form
+                            document.getElementById('edit-user-id').value = userId;
+                            document.getElementById('edit-username').value = username;
+                            document.getElementById('edit-email').value = email;
+                            document.getElementById('edit-role').value = role;
+                            document.getElementById('edit-password').value = '';
+                            
+                            // Show the edit form
+                            document.getElementById('edit-user-form').style.display = 'block';
+                            document.getElementById('add-user-form').style.display = 'none';
+                        });
                     });
                     
                     document.querySelectorAll('.delete-user').forEach(button => {
-                        button.addEventListener('click', () => deleteUser(button.getAttribute('data-id')));
+                        button.addEventListener('click', async () => {
+                            const userId = button.getAttribute('data-id');
+                            if (confirm('Are you sure you want to delete this user?')) {
+                                try {
+                                    const response = await fetchAPI(`/api/users/${userId}`, {
+                                        method: 'DELETE'
+                                    });
+                                    
+                                    if (response.success) {
+                                        showMessage('user-message', 'User deleted successfully!', 'success');
+                                        await loadUsers();
+                                    } else {
+                                        showMessage('user-message', response.error || 'Failed to delete user.');
+                                    }
+                                } catch (err) {
+                                    console.error('Error deleting user:', err);
+                                    showMessage('user-message', 'Error deleting user. Please try again.');
+                                }
+                            }
+                        });
                     });
                 }
             } catch (err) {
                 console.error('Error loading users:', err);
                 showMessage('user-message', 'Error loading users. Please try again later.');
+            }
+        }
+        
+        // Function to load all orders
+        async function loadAllOrders() {
+            try {
+                const data = await fetchAPI('/api/orders');
+                const ordersTable = document.getElementById('all-orders-table');
+                
+                if (ordersTable) {
+                    ordersTable.innerHTML = '';
+                    
+                    if (data.length === 0) {
+                        ordersTable.innerHTML = '<tr><td colspan="9" style="text-align: center;">No orders found</td></tr>';
+                        return;
+                    }
+                    
+                    data.forEach(order => {
+                        const customer = addresses.find(a => a.id === order.customer_address_id)?.name || 'Unknown';
+                        const restaurant = addresses.find(a => a.id === order.restaurant_address_id)?.name || 'Unknown';
+                        
+                        const row = document.createElement('tr');
+                        row.innerHTML = `
+                            <td>${order.id}</td>
+                            <td>${order.merchant_id}</td>
+                            <td>${order.courier_id || 'Unassigned'}</td>
+                            <td>${customer}</td>
+                            <td>${restaurant}</td>
+                            <td>${formatDateTime(order.due_time)}</td>
+                            <td>${order.status}</td>
+                            <td>$${order.total_price ? order.total_price.toFixed(2) : '0.00'}</td>
+                            <td>
+                                <button class="btn btn-small view-details" data-id="${order.id}">View Items</button>
+                                <button class="btn btn-small edit-order" data-id="${order.id}" data-status="${order.status}" data-due-time="${order.due_time}">Edit</button>
+                                <button class="btn btn-small btn-cancel delete-order" data-id="${order.id}">Delete</button>
+                            </td>
+                        `;
+                        ordersTable.appendChild(row);
+                    });
+                    
+                    // Add event listeners for actions
+                    document.querySelectorAll('.view-details').forEach(button => {
+                        button.addEventListener('click', () => showOrderDetails(button.getAttribute('data-id')));
+                    });
+                    
+                    document.querySelectorAll('.edit-order').forEach(button => {
+                        button.addEventListener('click', () => {
+                            const orderId = button.getAttribute('data-id');
+                            const status = button.getAttribute('data-status');
+                            const dueTime = button.getAttribute('data-due-time');
+                            
+                            // Format due time for datetime-local input
+                            const dueDate = new Date(dueTime);
+                            const formattedDueTime = dueDate.toISOString().slice(0, 16); // Format: YYYY-MM-DDTHH:MM
+                            
+                            // Fill the edit form
+                            document.getElementById('edit-order-id').value = orderId;
+                            document.getElementById('edit-order-status').value = status;
+                            document.getElementById('edit-order-due-time').value = formattedDueTime;
+                            
+                            // Show the edit form
+                            document.getElementById('edit-order-form').style.display = 'block';
+                        });
+                    });
+                    
+                    document.querySelectorAll('.delete-order').forEach(button => {
+                        button.addEventListener('click', async () => {
+                            const orderId = button.getAttribute('data-id');
+                            if (confirm('Are you sure you want to delete this order?')) {
+                                try {
+                                    const response = await fetchAPI(`/api/orders/${orderId}`, {
+                                        method: 'DELETE'
+                                    });
+                                    
+                                    if (response.success) {
+                                        showMessage('order-message', 'Order deleted successfully!', 'success');
+                                        await loadAllOrders();
+                                    } else {
+                                        showMessage('order-message', response.error || 'Failed to delete order.');
+                                    }
+                                } catch (err) {
+                                    console.error('Error deleting order:', err);
+                                    showMessage('order-message', 'Error deleting order. Please try again.');
+                                }
+                            }
+                        });
+                    });
+                }
+            } catch (err) {
+                console.error('Error loading all orders:', err);
+                showMessage('order-message', 'Error loading orders. Please try again later.');
+            }
+        }
+        
+        // Function to show order details
+        function showOrderDetails(orderId) {
+            // Fetch the order details
+            fetch(`/api/orders/${orderId}/food-items`)
+                .then(response => response.json())
+                .then(foodItems => {
+                    const tableBody = document.getElementById('order-items-table');
+                    tableBody.innerHTML = '';
+                    
+                    let total = 0;
+                    
+                    foodItems.forEach(item => {
+                        const row = document.createElement('tr');
+                        const subtotal = item.quantity * item.price;
+                        total += subtotal;
+                        
+                        row.innerHTML = `
+                            <td>${item.name}</td>
+                            <td>${item.quantity}</td>
+                            <td>$${item.price.toFixed(2)}</td>
+                            <td>$${subtotal.toFixed(2)}</td>
+                        `;
+                        
+                        tableBody.appendChild(row);
+                    });
+                    
+                    document.getElementById('modal-order-total').textContent = total.toFixed(2);
+                    document.getElementById('order-details-modal').style.display = 'block';
+                })
+                .catch(err => {
+                    console.error('Error fetching order details:', err);
+                    alert('Error loading order details');
+                });
+        }
+        
+        // Function to close order details modal
+        function closeOrderDetails() {
+            document.getElementById('order-details-modal').style.display = 'none';
+        }
+        
+        // Load addresses for address management
+        async function loadAddresses() {
+            try {
+                const addressesResponse = await fetch('/api/addresses');
+                const addressesData = await addressesResponse.json();
+                
+                addresses = addressesData; // Store globally for other functions to use
+                
+                const addressesGrid = document.getElementById('addresses-grid');
+                if (addressesGrid) {
+                    addressesGrid.innerHTML = '';
+                    
+                    addressesData.forEach(address => {
+                        const card = document.createElement('div');
+                        card.className = 'restaurant-card';
+                        card.innerHTML = `
+                            <div class="card-actions">
+                                <button class="btn btn-small edit-address" 
+                                    data-id="${address.id}" 
+                                    data-name="${address.name}" 
+                                    data-is-restaurant="${address.is_restaurant}" 
+                                    data-latitude="${address.latitude}" 
+                                    data-longitude="${address.longitude}">Edit</button>
+                                <button class="btn btn-small btn-cancel delete-address" data-id="${address.id}">Delete</button>
+                            </div>
+                            <h4>${address.name}</h4>
+                            <p>${address.is_restaurant ? 'Restaurant' : 'Customer'}</p>
+                            <p>Lat: ${address.latitude.toFixed(4)}</p>
+                            <p>Long: ${address.longitude.toFixed(4)}</p>
+                        `;
+                        addressesGrid.appendChild(card);
+                    });
+                    
+                    // Add event listeners for edit and delete
+                    document.querySelectorAll('.edit-address').forEach(button => {
+                        button.addEventListener('click', () => {
+                            const addressId = button.getAttribute('data-id');
+                            const name = button.getAttribute('data-name');
+                            const isRestaurant = button.getAttribute('data-is-restaurant');
+                            const latitude = button.getAttribute('data-latitude');
+                            const longitude = button.getAttribute('data-longitude');
+                            
+                            // Fill the edit form
+                            document.getElementById('edit-address-id').value = addressId;
+                            document.getElementById('edit-address-name').value = name;
+                            document.getElementById('edit-is-restaurant').value = isRestaurant;
+                            document.getElementById('edit-latitude').value = latitude;
+                            document.getElementById('edit-longitude').value = longitude;
+                            
+                            // Show the edit form
+                            document.getElementById('edit-address-form').style.display = 'block';
+                            document.getElementById('add-address-form').style.display = 'none';
+                        });
+                    });
+                    
+                    document.querySelectorAll('.delete-address').forEach(button => {
+                        button.addEventListener('click', async () => {
+                            const addressId = button.getAttribute('data-id');
+                            if (confirm('Are you sure you want to delete this address? This may affect existing orders.')) {
+                                try {
+                                    const response = await fetchAPI(`/api/addresses/${addressId}`, {
+                                        method: 'DELETE'
+                                    });
+                                    
+                                    if (response.success) {
+                                        showMessage('address-message', 'Address deleted successfully!', 'success');
+                                        await loadAddresses();
+                                    } else {
+                                        showMessage('address-message', response.error || 'Failed to delete address.');
+                                    }
+                                } catch (err) {
+                                    console.error('Error deleting address:', err);
+                                    showMessage('address-message', 'Error deleting address. Please try again.');
+                                }
+                            }
+                        });
+                    });
+                }
+                
+                return addressesData;
+            } catch (err) {
+                console.error('Error loading addresses:', err);
+                showMessage('address-message', 'Error loading addresses. Please try again later.');
+                return [];
+            }
+        }
+        
+        // Initialize admin dashboard
+        async function initAdminDashboard() {
+            try {
+                // Load addresses for the order form
+                const addressesData = await loadAddresses();
+                addresses = addressesData;
+                
+                // Load users for user management
+                await loadUsers();
+                
+                // Load all orders for order management
+                await loadAllOrders();
+                
+                // Setup forms
+                setupAdminForms();
+                
+            } catch (err) {
+                console.error('Error initializing admin dashboard:', err);
+                showMessage('user-message', 'Error loading dashboard data. Please try again later.');
+            }
+        }
+        
+        // Setup admin forms
+        function setupAdminForms() {
+            // User form setup
+            const addUserBtn = document.getElementById('add-user-btn');
+            const userForm = document.getElementById('user-form');
+            const userEditForm = document.getElementById('user-edit-form');
+            const cancelAddUser = document.getElementById('cancel-add-user');
+            const cancelEditUser = document.getElementById('cancel-edit-user');
+            
+            if (addUserBtn) {
+                addUserBtn.addEventListener('click', () => {
+                    document.getElementById('add-user-form').style.display = 'block';
+                    document.getElementById('edit-user-form').style.display = 'none';
+                    userForm.reset();
+                });
+            }
+            
+            if (cancelAddUser) {
+                cancelAddUser.addEventListener('click', () => {
+                    document.getElementById('add-user-form').style.display = 'none';
+                    userForm.reset();
+                });
+            }
+            
+            if (cancelEditUser) {
+                cancelEditUser.addEventListener('click', () => {
+                    document.getElementById('edit-user-form').style.display = 'none';
+                    userEditForm.reset();
+                });
+            }
+            
+            if (userForm) {
+                userForm.addEventListener('submit', async (e) => {
+                    e.preventDefault();
+                    
+                    const formData = new FormData(userForm);
+                    const userData = {
+                        username: formData.get('username'),
+                        email: formData.get('email'),
+                        password: formData.get('password'),
+                        role: formData.get('role')
+                    };
+                    
+                    try {
+                        const response = await fetchAPI('/api/users', {
+                            method: 'POST',
+                            body: JSON.stringify(userData)
+                        });
+                        
+                        if (response.success) {
+                            showMessage('user-message', 'User added successfully!', 'success');
+                            document.getElementById('add-user-form').style.display = 'none';
+                            userForm.reset();
+                            await loadUsers();
+                        } else {
+                            showMessage('user-message', response.error || 'Failed to add user.');
+                        }
+                    } catch (err) {
+                        console.error('Error adding user:', err);
+                        showMessage('user-message', 'Error adding user. Please try again.');
+                    }
+                });
+            }
+            
+            if (userEditForm) {
+                userEditForm.addEventListener('submit', async (e) => {
+                    e.preventDefault();
+                    
+                    const formData = new FormData(userEditForm);
+                    const userId = formData.get('user_id');
+                    const userData = {
+                        username: formData.get('username'),
+                        email: formData.get('email'),
+                        role: formData.get('role')
+                    };
+                    
+                    // Only include password if it's provided
+                    const password = formData.get('password');
+                    if (password) {
+                        userData.password = password;
+                    }
+                    
+                    try {
+                        const response = await fetchAPI(`/api/users/${userId}`, {
+                            method: 'PUT',
+                            body: JSON.stringify(userData)
+                        });
+                        
+                        if (response.success) {
+                            showMessage('user-message', 'User updated successfully!', 'success');
+                            document.getElementById('edit-user-form').style.display = 'none';
+                            userEditForm.reset();
+                            await loadUsers();
+                        } else {
+                            showMessage('user-message', response.error || 'Failed to update user.');
+                        }
+                    } catch (err) {
+                        console.error('Error updating user:', err);
+                        showMessage('user-message', 'Error updating user. Please try again.');
+                    }
+                });
+            }
+            
+            // Address form setup
+            const addAddressBtn = document.getElementById('add-address-btn');
+            const addressForm = document.getElementById('address-form');
+            const addressEditForm = document.getElementById('address-edit-form');
+            const cancelAddAddress = document.getElementById('cancel-add-address');
+            const cancelEditAddress = document.getElementById('cancel-edit-address');
+            
+            if (addAddressBtn) {
+                addAddressBtn.addEventListener('click', () => {
+                    document.getElementById('add-address-form').style.display = 'block';
+                    document.getElementById('edit-address-form').style.display = 'none';
+                    addressForm.reset();
+                });
+            }
+            
+            if (cancelAddAddress) {
+                cancelAddAddress.addEventListener('click', () => {
+                    document.getElementById('add-address-form').style.display = 'none';
+                    addressForm.reset();
+                });
+            }
+            
+            if (cancelEditAddress) {
+                cancelEditAddress.addEventListener('click', () => {
+                    document.getElementById('edit-address-form').style.display = 'none';
+                    addressEditForm.reset();
+                });
+            }
+            
+            if (addressForm) {
+                addressForm.addEventListener('submit', async (e) => {
+                    e.preventDefault();
+                    
+                    const formData = new FormData(addressForm);
+                    const addressData = {
+                        name: formData.get('name'),
+                        is_restaurant: formData.get('is_restaurant') === '1',
+                        latitude: parseFloat(formData.get('latitude')),
+                        longitude: parseFloat(formData.get('longitude'))
+                    };
+                    
+                    try {
+                        const response = await fetchAPI('/api/addresses', {
+                            method: 'POST',
+                            body: JSON.stringify(addressData)
+                        });
+                        
+                        if (response.success) {
+                            showMessage('address-message', 'Address added successfully!', 'success');
+                            document.getElementById('add-address-form').style.display = 'none';
+                            addressForm.reset();
+                            await loadAddresses();
+                        } else {
+                            showMessage('address-message', response.error || 'Failed to add address.');
+                        }
+                    } catch (err) {
+                        console.error('Error adding address:', err);
+                        showMessage('address-message', 'Error adding address. Please try again.');
+                    }
+                });
+            }
+            
+            if (addressEditForm) {
+                addressEditForm.addEventListener('submit', async (e) => {
+                    e.preventDefault();
+                    
+                    const formData = new FormData(addressEditForm);
+                    const addressId = formData.get('address_id');
+                    const addressData = {
+                        name: formData.get('name'),
+                        is_restaurant: formData.get('is_restaurant') === '1',
+                        latitude: parseFloat(formData.get('latitude')),
+                        longitude: parseFloat(formData.get('longitude'))
+                    };
+                    
+                    try {
+                        const response = await fetchAPI(`/api/addresses/${addressId}`, {
+                            method: 'PUT',
+                            body: JSON.stringify(addressData)
+                        });
+                        
+                        if (response.success) {
+                            showMessage('address-message', 'Address updated successfully!', 'success');
+                            document.getElementById('edit-address-form').style.display = 'none';
+                            addressEditForm.reset();
+                            await loadAddresses();
+                        } else {
+                            showMessage('address-message', response.error || 'Failed to update address.');
+                        }
+                    } catch (err) {
+                        console.error('Error updating address:', err);
+                        showMessage('address-message', 'Error updating address. Please try again.');
+                    }
+                });
+            }
+            
+            // Order form setup
+            const orderEditForm = document.getElementById('order-edit-form');
+            const cancelEditOrder = document.getElementById('cancel-edit-order');
+            
+            if (cancelEditOrder) {
+                cancelEditOrder.addEventListener('click', () => {
+                    document.getElementById('edit-order-form').style.display = 'none';
+                    orderEditForm.reset();
+                });
+            }
+            
+            if (orderEditForm) {
+                orderEditForm.addEventListener('submit', async (e) => {
+                    e.preventDefault();
+                    
+                    const formData = new FormData(orderEditForm);
+                    const orderId = formData.get('order_id');
+                    const orderData = {
+                        status: formData.get('status'),
+                        due_time: formData.get('due_time')
+                    };
+                    
+                    try {
+                        const response = await fetchAPI(`/api/orders/${orderId}`, {
+                            method: 'PUT',
+                            body: JSON.stringify(orderData)
+                        });
+                        
+                        if (response.success) {
+                            showMessage('order-message', 'Order updated successfully!', 'success');
+                            document.getElementById('edit-order-form').style.display = 'none';
+                            orderEditForm.reset();
+                            await loadAllOrders();
+                        } else {
+                            showMessage('order-message', response.error || 'Failed to update order.');
+                        }
+                    } catch (err) {
+                        console.error('Error updating order:', err);
+                        showMessage('order-message', 'Error updating order. Please try again.');
+                    }
+                });
             }
         }
     </script>
