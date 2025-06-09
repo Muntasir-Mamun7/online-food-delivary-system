@@ -12,6 +12,7 @@ function initializeDatabase() {
     db.run(`CREATE TABLE IF NOT EXISTS users (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       username TEXT UNIQUE NOT NULL,
+      email TEXT UNIQUE NOT NULL,
       password TEXT NOT NULL,
       role TEXT NOT NULL CHECK (role IN ('merchant', 'courier', 'admin', 'customer')),
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
@@ -143,8 +144,8 @@ function insertDefaultAdmin() {
           return;
         }
         
-        db.run(`INSERT INTO users (username, password, role) 
-                VALUES ('admin', ?, 'admin')`, [hash]);
+        db.run(`INSERT INTO users (username, email, password, role) 
+                VALUES ('admin', 'admin@fooddelivery.com', ?, 'admin')`, [hash]);
       });
     }
   });
