@@ -260,24 +260,73 @@ app.get('/api/travel-times', (req, res) => {
   });
 });
 
-// Create new order (for merchants)
+// Create new order with food items (for merchants)
 app.post('/api/orders', checkAuthentication('merchant'), (req, res) => {
-  const { customer_address_id, restaurant_address_id, due_time } = req.body;
+  const { customer_address_id, restaurant_address_id, due_time, food_items } = req.body;
   const merchant_id = req.session.user.id;
   
-  db.run(`INSERT INTO orders (merchant_id, customer_address_id, restaurant_address_id, due_time) 
-          VALUES (?, ?, ?, ?)`, 
-          [merchant_id, customer_address_id, restaurant_address_id, due_time],
-          function(err) {
-            if (err) {
-              return res.status(500).json({ error: 'Failed to create order' });
-            }
-            
-            res.status(201).json({ 
-              success: true, 
-              order_id: this.lastID 
+  // Validate food items
+  if (!Array.isArray(food_items) || food_items.length === 0) {
+    return res.status(400).json({ error: 'At least one food item is required' });
+  }
+  
+  // Calculate total price
+  const totalPrice = food_items.reduce((sum, item) => {
+    return sum + (parseFloat(item.price) * parseInt(item.quantity));
+  }, 0);
+  
+  // Begin transaction
+  db.serialize(() => {
+    db.run('BEGIN TRANSACTION');
+    
+    // Insert the order
+    db.run(
+      `INSERT INTO orders (merchant_id, customer_address_id, restaurant_address_id, due_time, total_price) 
+      VALUES (?, ?, ?, ?, ?)`,
+      [merchant_id, customer_address_id, restaurant_address_id, due_time, totalPrice],
+      function(err) {
+        if (err) {
+          db.run('ROLLBACK');
+          return res.status(500).json({ error: 'Failed to create order' });
+        }
+        
+        const orderId = this.lastID;
+        const foodItemPromises = [];
+        
+        // Insert each food item
+        food_items.forEach(item => {
+          foodItemPromises.push(
+            new Promise((resolve, reject) => {
+              db.run(
+                'INSERT INTO food_items (order_id, name, quantity, price) VALUES (?, ?, ?, ?)',
+                [orderId, item.name, item.quantity, item.price],
+                function(err) {
+                  if (err) reject(err);
+                  else resolve();
+                }
+              );
+            })
+          );
+        });
+        
+        // Wait for all food items to be inserted
+        Promise.all(foodItemPromises)
+          .then(() => {
+            db.run('COMMIT');
+            res.status(201).json({
+              success: true,
+              order_id: orderId,
+              total_price: totalPrice
             });
+          })
+          .catch(err => {
+            console.error('Error inserting food items:', err);
+            db.run('ROLLBACK');
+            res.status(500).json({ error: 'Failed to add food items to order' });
           });
+      }
+    );
+  });
 });
 
 // Get orders based on role
@@ -322,7 +371,40 @@ app.get('/api/orders', (req, res) => {
     if (err) {
       return res.status(500).json({ error: 'Failed to fetch orders', details: err.message });
     }
-    res.json(orders);
+    
+    // Get food items for each order
+    const orderPromises = orders.map(order => {
+      return new Promise((resolve, reject) => {
+        db.all('SELECT * FROM food_items WHERE order_id = ?', [order.id], (err, foodItems) => {
+          if (err) reject(err);
+          else {
+            order.food_items = foodItems;
+            resolve(order);
+          }
+        });
+      });
+    });
+    
+    Promise.all(orderPromises)
+      .then(ordersWithItems => {
+        res.json(ordersWithItems);
+      })
+      .catch(err => {
+        console.error('Error fetching food items:', err);
+        res.status(500).json({ error: 'Failed to fetch order details' });
+      });
+  });
+});
+
+// Get food items for a specific order
+app.get('/api/orders/:id/food-items', (req, res) => {
+  const orderId = req.params.id;
+  
+  db.all('SELECT * FROM food_items WHERE order_id = ?', [orderId], (err, foodItems) => {
+    if (err) {
+      return res.status(500).json({ error: 'Failed to fetch food items' });
+    }
+    res.json(foodItems);
   });
 });
 
