@@ -59,10 +59,10 @@ function checkAuthentication(role) {
 // API routes
 // Registration endpoint
 app.post('/api/register', (req, res) => {
-  const { username, password, role } = req.body;
+  const { name, email, password, role } = req.body;
   
   // Validate input
-  if (!username || !password || !role) {
+  if (!name || !email || !password || !role) {
     return res.status(400).json({ error: 'All fields are required' });
   }
   
@@ -72,14 +72,14 @@ app.post('/api/register', (req, res) => {
     return res.status(400).json({ error: 'Invalid role selected' });
   }
   
-  // Check if username already exists
-  db.get('SELECT id FROM users WHERE username = ?', [username], (err, user) => {
+  // Check if email already exists
+  db.get('SELECT id FROM users WHERE email = ?', [email], (err, user) => {
     if (err) {
       return res.status(500).json({ error: 'Database error during registration' });
     }
     
     if (user) {
-      return res.status(409).json({ error: 'Username already exists' });
+      return res.status(409).json({ error: 'Email already exists' });
     }
     
     // Hash password and create user
@@ -89,8 +89,8 @@ app.post('/api/register', (req, res) => {
       }
       
       db.run(
-        'INSERT INTO users (username, password, role) VALUES (?, ?, ?)',
-        [username, hash, role],
+        'INSERT INTO users (name, email, password, role) VALUES (?, ?, ?, ?)',
+        [name, email, hash, role],
         function(err) {
           if (err) {
             return res.status(500).json({ error: 'Failed to register user' });
@@ -109,34 +109,35 @@ app.post('/api/register', (req, res) => {
 
 // Login
 app.post('/api/login', (req, res) => {
-  const { username, password, role } = req.body;
+  const { email, password } = req.body;
   
-  if (!username || !password || !role) {
-    return res.status(400).json({ error: 'All fields are required' });
+  if (!email || !password) {
+    return res.status(400).json({ error: 'Email and password are required' });
   }
   
-  // Get user with the specified username and role
+  // Find user by email (no role check at login)
   db.get(
-    'SELECT * FROM users WHERE username = ? AND role = ?',
-    [username, role],
+    'SELECT * FROM users WHERE email = ?',
+    [email],
     (err, user) => {
       if (err) {
         return res.status(500).json({ error: 'Internal server error' });
       }
       
       if (!user) {
-        return res.status(401).json({ error: 'Invalid username, password, or role' });
+        return res.status(401).json({ error: 'Invalid email or password' });
       }
       
       bcrypt.compare(password, user.password, (err, result) => {
         if (err || !result) {
-          return res.status(401).json({ error: 'Invalid username, password, or role' });
+          return res.status(401).json({ error: 'Invalid email or password' });
         }
         
         // Store user in session (without password)
         req.session.user = {
           id: user.id,
-          username: user.username,
+          name: user.name,
+          email: user.email,
           role: user.role
         };
         
@@ -144,7 +145,8 @@ app.post('/api/login', (req, res) => {
           success: true,
           user: {
             id: user.id,
-            username: user.username,
+            name: user.name,
+            email: user.email,
             role: user.role
           }
         });
@@ -291,7 +293,7 @@ app.get('/api/orders', (req, res) => {
                WHERE o.customer_address_id IN (
                  SELECT id FROM addresses WHERE name LIKE ?
                )`;
-      params = [`%${req.session.user.username}%`]; // This is a simplification; in a real app you'd link customers to addresses
+      params = [`%${req.session.user.name}%`]; // This is a simplification; in a real app you'd link customers to addresses
     }
   }
   
@@ -392,7 +394,7 @@ app.put('/api/orders/:id/status', checkAuthentication(), (req, res) => {
 
 // Get users (admin only)
 app.get('/api/users', checkAuthentication('admin'), (req, res) => {
-  db.all('SELECT id, username, role, created_at FROM users', (err, users) => {
+  db.all('SELECT id, name, email, role, created_at FROM users', (err, users) => {
     if (err) {
       return res.status(500).json({ error: 'Failed to fetch users' });
     }
@@ -402,21 +404,21 @@ app.get('/api/users', checkAuthentication('admin'), (req, res) => {
 
 // Create user (admin only)
 app.post('/api/users', checkAuthentication('admin'), (req, res) => {
-  const { username, password, role } = req.body;
+  const { name, email, password, role } = req.body;
   
   // Validate input
-  if (!username || !password || !role) {
+  if (!name || !email || !password || !role) {
     return res.status(400).json({ error: 'All fields are required' });
   }
   
-  // Check if username already exists
-  db.get('SELECT id FROM users WHERE username = ?', [username], (err, user) => {
+  // Check if email already exists
+  db.get('SELECT id FROM users WHERE email = ?', [email], (err, user) => {
     if (err) {
       return res.status(500).json({ error: 'Database error during user creation' });
     }
     
     if (user) {
-      return res.status(409).json({ error: 'Username already exists' });
+      return res.status(409).json({ error: 'Email already exists' });
     }
     
     // Hash password and create user
@@ -426,8 +428,8 @@ app.post('/api/users', checkAuthentication('admin'), (req, res) => {
       }
       
       db.run(
-        'INSERT INTO users (username, password, role) VALUES (?, ?, ?)',
-        [username, hash, role],
+        'INSERT INTO users (name, email, password, role) VALUES (?, ?, ?, ?)',
+        [name, email, hash, role],
         function(err) {
           if (err) {
             return res.status(500).json({ error: 'Failed to create user' });
