@@ -11,7 +11,7 @@ initializeDatabase();
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// Middleware
+// Middleware4
 app.use(express.static(path.join(__dirname, 'public')));
 app.use(bodyParser.urlencoded({ extended: true }));
 app.use(bodyParser.json());
