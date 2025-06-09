@@ -27,6 +27,18 @@ function initializeDatabase() {
       longitude REAL NOT NULL
     )`);
 
+    // Food items table
+    db.run(`CREATE TABLE IF NOT EXISTS food_items (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      merchant_id INTEGER NOT NULL,
+      name TEXT NOT NULL,
+      description TEXT,
+      price REAL NOT NULL,
+      available_quantity INTEGER NOT NULL DEFAULT 0,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (merchant_id) REFERENCES users (id)
+    )`);
+
     // Travel times between locations
     db.run(`CREATE TABLE IF NOT EXISTS travel_times (
       from_address_id INTEGER NOT NULL,
@@ -45,12 +57,24 @@ function initializeDatabase() {
       customer_address_id INTEGER NOT NULL,
       restaurant_address_id INTEGER NOT NULL,
       due_time TIMESTAMP NOT NULL,
+      total_price REAL NOT NULL DEFAULT 0,
       status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'accepted', 'in_transit', 'delivered', 'cancelled')),
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
       FOREIGN KEY (merchant_id) REFERENCES users (id),
       FOREIGN KEY (courier_id) REFERENCES users (id),
       FOREIGN KEY (customer_address_id) REFERENCES addresses (id),
       FOREIGN KEY (restaurant_address_id) REFERENCES addresses (id)
+    )`);
+    
+    // Order items table (for linking food items to orders)
+    db.run(`CREATE TABLE IF NOT EXISTS order_items (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      order_id INTEGER NOT NULL,
+      food_item_id INTEGER NOT NULL,
+      quantity INTEGER NOT NULL,
+      unit_price REAL NOT NULL,
+      FOREIGN KEY (order_id) REFERENCES orders (id),
+      FOREIGN KEY (food_item_id) REFERENCES food_items (id)
     )`);
     
     // Insert predefined addresses (1 restaurant + 8 customer addresses)
