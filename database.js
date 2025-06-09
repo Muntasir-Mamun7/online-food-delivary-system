@@ -45,12 +45,23 @@ function initializeDatabase() {
       customer_address_id INTEGER NOT NULL,
       restaurant_address_id INTEGER NOT NULL,
       due_time TIMESTAMP NOT NULL,
+      total_price REAL DEFAULT 0,
       status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'accepted', 'in_transit', 'delivered', 'cancelled')),
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
       FOREIGN KEY (merchant_id) REFERENCES users (id),
       FOREIGN KEY (courier_id) REFERENCES users (id),
       FOREIGN KEY (customer_address_id) REFERENCES addresses (id),
       FOREIGN KEY (restaurant_address_id) REFERENCES addresses (id)
+    )`);
+    
+    // Food items table
+    db.run(`CREATE TABLE IF NOT EXISTS food_items (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      order_id INTEGER NOT NULL,
+      name TEXT NOT NULL,
+      quantity INTEGER NOT NULL DEFAULT 1,
+      price REAL NOT NULL,
+      FOREIGN KEY (order_id) REFERENCES orders (id) ON DELETE CASCADE
     )`);
     
     // Insert predefined addresses (1 restaurant + 8 customer addresses)
