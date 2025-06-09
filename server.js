@@ -1,7 +1,7 @@
 // Add these new API routes for food item management to the server.js file 
 // (keep all the existing code, just add these new routes)
 
-// Get food items for a merchant
+// Get food items for a merchant dfd
 app.get('/api/food-items', (req, res) => {
   const merchantId = req.query.merchant_id || (req.session.user && req.session.user.role === 'merchant' ? req.session.user.id : null);
   
