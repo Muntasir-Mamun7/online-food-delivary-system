@@ -1,530 +1,342 @@
-const express = require('express');
-const session = require('express-session');
-const bodyParser = require('body-parser');
-const bcrypt = require('bcrypt');
-const path = require('path');
-const { db, initializeDatabase } = require('./database');
+// Add these new API routes for food item management to the server.js file 
+// (keep all the existing code, just add these new routes)
 
-// Initialize database
-initializeDatabase();
-
-const app = express();
-const PORT = process.env.PORT || 3000;
-
-// Middleware
-app.use(express.static(path.join(__dirname, 'public')));
-app.use(bodyParser.urlencoded({ extended: true }));
-app.use(bodyParser.json());
-app.use(session({
-  secret: 'food_delivery_secret',
-  resave: false,
-  saveUninitialized: true
-}));
-
-// Serve HTML files
-app.get('/', (req, res) => {
-  res.sendFile(path.join(__dirname, 'views', 'index.html'));
-});
-
-app.get('/login', (req, res) => {
-  res.sendFile(path.join(__dirname, 'views', 'login.html'));
-});
-
-app.get('/merchant-dashboard', checkAuthentication('merchant'), (req, res) => {
-  res.sendFile(path.join(__dirname, 'views', 'merchant-dashboard.html'));
-});
-
-app.get('/courier-dashboard', checkAuthentication('courier'), (req, res) => {
-  res.sendFile(path.join(__dirname, 'views', 'courier-dashboard.html'));
-});
-
-app.get('/admin-dashboard', checkAuthentication('admin'), (req, res) => {
-  res.sendFile(path.join(__dirname, 'views', 'admin-dashboard.html'));
-});
-
-app.get('/customer-dashboard', checkAuthentication('customer'), (req, res) => {
-  res.sendFile(path.join(__dirname, 'views', 'customer-dashboard.html'));
-});
-
-// Authentication middleware
-function checkAuthentication(role) {
-  return (req, res, next) => {
-    if (req.session.user && (!role || req.session.user.role === role)) {
-      return next();
-    }
-    res.redirect('/login');
-  };
-}
-
-// API routes
-// Registration endpoint
-app.post('/api/register', (req, res) => {
-  const { name, email, password, role } = req.body;
+// Get food items for a merchant
+app.get('/api/food-items', (req, res) => {
+  const merchantId = req.query.merchant_id || (req.session.user && req.session.user.role === 'merchant' ? req.session.user.id : null);
   
-  // Validate input
-  if (!name || !email || !password || !role) {
-    return res.status(400).json({ error: 'All fields are required' });
+  if (!merchantId) {
+    return res.status(400).json({ error: 'Merchant ID is required' });
   }
   
-  // Only allow valid roles
-  const validRoles = ['customer', 'merchant', 'courier'];
-  if (!validRoles.includes(role)) {
-    return res.status(400).json({ error: 'Invalid role selected' });
-  }
-  
-  // Check if email already exists
-  db.get('SELECT id FROM users WHERE email = ?', [email], (err, user) => {
+  db.all('SELECT * FROM food_items WHERE merchant_id = ? ORDER BY name', [merchantId], (err, items) => {
     if (err) {
-      return res.status(500).json({ error: 'Database error during registration' });
+      return res.status(500).json({ error: 'Failed to fetch food items' });
     }
-    
-    if (user) {
-      return res.status(409).json({ error: 'Email already exists' });
-    }
-    
-    // Hash password and create user
-    bcrypt.hash(password, 10, (err, hash) => {
-      if (err) {
-        return res.status(500).json({ error: 'Password encryption failed' });
-      }
-      
-      db.run(
-        'INSERT INTO users (name, email, password, role) VALUES (?, ?, ?, ?)',
-        [name, email, hash, role],
-        function(err) {
-          if (err) {
-            return res.status(500).json({ error: 'Failed to register user' });
-          }
-          
-          res.status(201).json({
-            success: true,
-            message: 'User registered successfully',
-            user_id: this.lastID
-          });
-        }
-      );
-    });
+    res.json(items);
   });
 });
 
-// Login
-app.post('/api/login', (req, res) => {
-  const { email, password } = req.body;
+// Add a new food item (for merchants)
+app.post('/api/food-items', checkAuthentication('merchant'), (req, res) => {
+  const { name, description, price, available_quantity } = req.body;
+  const merchantId = req.session.user.id;
   
-  if (!email || !password) {
-    return res.status(400).json({ error: 'Email and password are required' });
+  // Validate input
+  if (!name || price === undefined || available_quantity === undefined) {
+    return res.status(400).json({ error: 'Name, price, and available quantity are required' });
   }
   
-  // Find user by email (no role check at login)
-  db.get(
-    'SELECT * FROM users WHERE email = ?',
-    [email],
-    (err, user) => {
+  db.run(
+    'INSERT INTO food_items (merchant_id, name, description, price, available_quantity) VALUES (?, ?, ?, ?, ?)',
+    [merchantId, name, description || '', price, available_quantity],
+    function(err) {
       if (err) {
-        return res.status(500).json({ error: 'Internal server error' });
+        return res.status(500).json({ error: 'Failed to add food item' });
       }
       
-      if (!user) {
-        return res.status(401).json({ error: 'Invalid email or password' });
-      }
-      
-      bcrypt.compare(password, user.password, (err, result) => {
-        if (err || !result) {
-          return res.status(401).json({ error: 'Invalid email or password' });
-        }
-        
-        // Store user in session (without password)
-        req.session.user = {
-          id: user.id,
-          name: user.name,
-          email: user.email,
-          role: user.role
-        };
-        
-        res.json({
-          success: true,
-          user: {
-            id: user.id,
-            name: user.name,
-            email: user.email,
-            role: user.role
-          }
-        });
+      res.status(201).json({
+        success: true,
+        item_id: this.lastID,
+        message: 'Food item added successfully'
       });
     }
   );
 });
 
-// Logout
-app.post('/api/logout', (req, res) => {
-  req.session.destroy();
-  res.json({ success: true });
-});
-
-// Get user information
-app.get('/api/user/info', (req, res) => {
-  if (!req.session.user) {
-    return res.status(401).json({ error: 'Not authenticated' });
-  }
+// Update a food item (for merchants)
+app.put('/api/food-items/:id', checkAuthentication('merchant'), (req, res) => {
+  const itemId = req.params.id;
+  const { name, description, price, available_quantity } = req.body;
+  const merchantId = req.session.user.id;
   
-  res.json({
-    success: true,
-    user: req.session.user
-  });
-});
-
-// Change password
-app.put('/api/user/password', (req, res) => {
-  if (!req.session.user) {
-    return res.status(401).json({ error: 'Not authenticated' });
-  }
-  
-  const { current_password, new_password } = req.body;
-  
-  if (!current_password || !new_password) {
-    return res.status(400).json({ error: 'All fields are required' });
-  }
-  
-  // Verify current password
-  db.get('SELECT * FROM users WHERE id = ?', [req.session.user.id], (err, user) => {
-    if (err || !user) {
-      return res.status(500).json({ error: 'Failed to retrieve user information' });
+  // Validate ownership
+  db.get('SELECT * FROM food_items WHERE id = ? AND merchant_id = ?', [itemId, merchantId], (err, item) => {
+    if (err) {
+      return res.status(500).json({ error: 'Failed to verify food item ownership' });
     }
     
-    bcrypt.compare(current_password, user.password, (err, result) => {
-      if (err || !result) {
-        return res.status(401).json({ error: 'Current password is incorrect' });
-      }
-      
-      // Hash new password
-      bcrypt.hash(new_password, 10, (err, hash) => {
+    if (!item) {
+      return res.status(404).json({ error: 'Food item not found or you do not have permission to edit it' });
+    }
+    
+    // Update the item
+    db.run(
+      'UPDATE food_items SET name = ?, description = ?, price = ?, available_quantity = ? WHERE id = ?',
+      [name || item.name, description !== undefined ? description : item.description, 
+       price !== undefined ? price : item.price, 
+       available_quantity !== undefined ? available_quantity : item.available_quantity, 
+       itemId],
+      function(err) {
         if (err) {
-          return res.status(500).json({ error: 'Password encryption failed' });
+          return res.status(500).json({ error: 'Failed to update food item' });
         }
         
-        // Update password
-        db.run(
-          'UPDATE users SET password = ? WHERE id = ?',
-          [hash, req.session.user.id],
-          (err) => {
-            if (err) {
-              return res.status(500).json({ error: 'Failed to update password' });
-            }
-            
-            res.json({
-              success: true,
-              message: 'Password updated successfully'
-            });
-          }
-        );
-      });
-    });
-  });
-});
-
-// Get all addresses
-app.get('/api/addresses', (req, res) => {
-  const type = req.query.type;
-  let query = 'SELECT * FROM addresses';
-  let params = [];
-  
-  if (type === 'restaurant') {
-    query = 'SELECT * FROM addresses WHERE is_restaurant = 1';
-  } else if (type === 'customer') {
-    query = 'SELECT * FROM addresses WHERE is_restaurant = 0';
-  }
-  
-  db.all(query, params, (err, addresses) => {
-    if (err) {
-      return res.status(500).json({ error: 'Failed to fetch addresses' });
-    }
-    res.json(addresses);
-  });
-});
-
-// Get travel times
-app.get('/api/travel-times', (req, res) => {
-  db.all('SELECT * FROM travel_times', (err, times) => {
-    if (err) {
-      return res.status(500).json({ error: 'Failed to fetch travel times' });
-    }
-    res.json(times);
-  });
-});
-
-// Create new order (for merchants)
-app.post('/api/orders', checkAuthentication('merchant'), (req, res) => {
-  const { customer_address_id, restaurant_address_id, due_time } = req.body;
-  const merchant_id = req.session.user.id;
-  
-  db.run(`INSERT INTO orders (merchant_id, customer_address_id, restaurant_address_id, due_time) 
-          VALUES (?, ?, ?, ?)`, 
-          [merchant_id, customer_address_id, restaurant_address_id, due_time],
-          function(err) {
-            if (err) {
-              return res.status(500).json({ error: 'Failed to create order' });
-            }
-            
-            res.status(201).json({ 
-              success: true, 
-              order_id: this.lastID 
-            });
-          });
-});
-
-// Get orders based on role
-app.get('/api/orders', (req, res) => {
-  const { role, status } = req.query;
-  let query = 'SELECT * FROM orders';
-  let params = [];
-  
-  // If role is provided, filter by role
-  if (role && req.session.user) {
-    if (role === 'merchant') {
-      query = 'SELECT * FROM orders WHERE merchant_id = ?';
-      params = [req.session.user.id];
-    } else if (role === 'courier') {
-      query = 'SELECT * FROM orders WHERE courier_id = ?';
-      params = [req.session.user.id];
-    } else if (role === 'customer') {
-      query = `SELECT o.*, a.name as restaurant_name 
-               FROM orders o
-               JOIN addresses a ON o.restaurant_address_id = a.id
-               WHERE o.customer_address_id IN (
-                 SELECT id FROM addresses WHERE name LIKE ?
-               )`;
-      params = [`%${req.session.user.name}%`]; // This is a simplification; in a real app you'd link customers to addresses
-    }
-  }
-  
-  // If status is provided, filter by status
-  if (status) {
-    if (params.length > 0) {
-      query += ' AND status = ?';
-    } else {
-      query += ' WHERE status = ?';
-    }
-    params.push(status);
-  }
-  
-  // Add ordering
-  query += ' ORDER BY due_time ASC';
-  
-  db.all(query, params, (err, orders) => {
-    if (err) {
-      return res.status(500).json({ error: 'Failed to fetch orders', details: err.message });
-    }
-    res.json(orders);
-  });
-});
-
-// Accept order (for couriers)
-app.post('/api/orders/:id/accept', checkAuthentication('courier'), (req, res) => {
-  const orderId = req.params.id;
-  const courierId = req.session.user.id;
-  
-  db.run(
-    'UPDATE orders SET courier_id = ?, status = "accepted" WHERE id = ? AND status = "pending"',
-    [courierId, orderId],
-    function(err) {
-      if (err) {
-        return res.status(500).json({ error: 'Failed to accept order' });
+        res.json({
+          success: true,
+          message: 'Food item updated successfully'
+        });
       }
-      
-      if (this.changes === 0) {
-        return res.status(400).json({ error: 'Order already accepted or does not exist' });
+    );
+  });
+});
+
+// Delete a food item (for merchants)
+app.delete('/api/food-items/:id', checkAuthentication('merchant'), (req, res) => {
+  const itemId = req.params.id;
+  const merchantId = req.session.user.id;
+  
+  // Validate ownership
+  db.get('SELECT * FROM food_items WHERE id = ? AND merchant_id = ?', [itemId, merchantId], (err, item) => {
+    if (err) {
+      return res.status(500).json({ error: 'Failed to verify food item ownership' });
+    }
+    
+    if (!item) {
+      return res.status(404).json({ error: 'Food item not found or you do not have permission to delete it' });
+    }
+    
+    // Delete the item
+    db.run('DELETE FROM food_items WHERE id = ?', [itemId], function(err) {
+      if (err) {
+        return res.status(500).json({ error: 'Failed to delete food item' });
       }
       
       res.json({
         success: true,
-        message: 'Order accepted successfully'
+        message: 'Food item deleted successfully'
       });
-    }
-  );
-});
-
-// Update order status
-app.put('/api/orders/:id/status', checkAuthentication(), (req, res) => {
-  const orderId = req.params.id;
-  const { status } = req.body;
-  const userId = req.session.user.id;
-  const userRole = req.session.user.role;
-  
-  // Validate status
-  const validStatuses = ['pending', 'accepted', 'in_transit', 'delivered', 'cancelled'];
-  if (!validStatuses.includes(status)) {
-    return res.status(400).json({ error: 'Invalid status' });
-  }
-  
-  // Check permissions based on role
-  let query = '';
-  let params = [];
-  
-  if (userRole === 'courier') {
-    // Couriers can only update their own orders
-    query = 'UPDATE orders SET status = ? WHERE id = ? AND courier_id = ?';
-    params = [status, orderId, userId];
-  } else if (userRole === 'merchant') {
-    // Merchants can only update their own orders
-    query = 'UPDATE orders SET status = ? WHERE id = ? AND merchant_id = ?';
-    params = [status, orderId, userId];
-  } else if (userRole === 'admin') {
-    // Admins can update any order
-    query = 'UPDATE orders SET status = ? WHERE id = ?';
-    params = [status, orderId];
-  } else {
-    return res.status(403).json({ error: 'Unauthorized to update this order' });
-  }
-  
-  db.run(query, params, function(err) {
-    if (err) {
-      return res.status(500).json({ error: 'Failed to update order status' });
-    }
-    
-    if (this.changes === 0) {
-      return res.status(404).json({ error: 'Order not found or you do not have permission to update it' });
-    }
-    
-    res.json({
-      success: true,
-      message: 'Order status updated successfully'
     });
   });
 });
 
-// Get users (admin only)
-app.get('/api/users', checkAuthentication('admin'), (req, res) => {
-  db.all('SELECT id, name, email, role, created_at FROM users', (err, users) => {
-    if (err) {
-      return res.status(500).json({ error: 'Failed to fetch users' });
-    }
-    res.json(users);
-  });
-});
-
-// Create user (admin only)
-app.post('/api/users', checkAuthentication('admin'), (req, res) => {
-  const { name, email, password, role } = req.body;
+// Update the create order endpoint to handle food items
+app.post('/api/orders', checkAuthentication('merchant'), (req, res) => {
+  const { customer_address_id, restaurant_address_id, due_time, items } = req.body;
+  const merchant_id = req.session.user.id;
   
-  // Validate input
-  if (!name || !email || !password || !role) {
-    return res.status(400).json({ error: 'All fields are required' });
+  // Validate basic order info
+  if (!customer_address_id || !restaurant_address_id || !due_time) {
+    return res.status(400).json({ error: 'Customer address, restaurant address, and due time are required' });
   }
   
-  // Check if email already exists
-  db.get('SELECT id FROM users WHERE email = ?', [email], (err, user) => {
-    if (err) {
-      return res.status(500).json({ error: 'Database error during user creation' });
-    }
+  // Validate items (must have at least one item)
+  if (!items || !Array.isArray(items) || items.length === 0) {
+    return res.status(400).json({ error: 'At least one food item must be included in the order' });
+  }
+  
+  // Start a transaction to ensure data consistency
+  db.serialize(() => {
+    db.run('BEGIN TRANSACTION');
     
-    if (user) {
-      return res.status(409).json({ error: 'Email already exists' });
-    }
+    let totalPrice = 0;
+    const itemPromises = [];
     
-    // Hash password and create user
-    bcrypt.hash(password, 10, (err, hash) => {
-      if (err) {
-        return res.status(500).json({ error: 'Password encryption failed' });
-      }
-      
-      db.run(
-        'INSERT INTO users (name, email, password, role) VALUES (?, ?, ?, ?)',
-        [name, email, hash, role],
-        function(err) {
-          if (err) {
-            return res.status(500).json({ error: 'Failed to create user' });
-          }
-          
-          res.status(201).json({
-            success: true,
-            message: 'User created successfully',
-            user_id: this.lastID
-          });
-        }
+    // Verify and calculate the total price for each item
+    items.forEach(item => {
+      itemPromises.push(
+        new Promise((resolve, reject) => {
+          db.get(
+            'SELECT price, available_quantity FROM food_items WHERE id = ? AND merchant_id = ?',
+            [item.food_item_id, merchant_id],
+            (err, foodItem) => {
+              if (err) {
+                return reject(err);
+              }
+              
+              if (!foodItem) {
+                return reject(new Error(`Food item with ID ${item.food_item_id} not found or does not belong to this merchant`));
+              }
+              
+              if (foodItem.available_quantity < item.quantity) {
+                return reject(new Error(`Insufficient quantity available for food item with ID ${item.food_item_id}`));
+              }
+              
+              const itemTotal = foodItem.price * item.quantity;
+              totalPrice += itemTotal;
+              
+              // Update the available quantity
+              db.run(
+                'UPDATE food_items SET available_quantity = available_quantity - ? WHERE id = ?',
+                [item.quantity, item.food_item_id],
+                (err) => {
+                  if (err) return reject(err);
+                  resolve({ 
+                    food_item_id: item.food_item_id, 
+                    quantity: item.quantity, 
+                    unit_price: foodItem.price 
+                  });
+                }
+              );
+            }
+          );
+        })
       );
     });
+    
+    // Wait for all item verifications to complete
+    Promise.all(itemPromises)
+      .then(validatedItems => {
+        // Create the order
+        db.run(
+          `INSERT INTO orders (merchant_id, customer_address_id, restaurant_address_id, due_time, total_price) 
+           VALUES (?, ?, ?, ?, ?)`, 
+          [merchant_id, customer_address_id, restaurant_address_id, due_time, totalPrice],
+          function(err) {
+            if (err) {
+              db.run('ROLLBACK');
+              return res.status(500).json({ error: 'Failed to create order' });
+            }
+            
+            const orderId = this.lastID;
+            const orderItemPromises = [];
+            
+            // Add each item to the order_items table
+            validatedItems.forEach(item => {
+              orderItemPromises.push(
+                new Promise((resolve, reject) => {
+                  db.run(
+                    'INSERT INTO order_items (order_id, food_item_id, quantity, unit_price) VALUES (?, ?, ?, ?)',
+                    [orderId, item.food_item_id, item.quantity, item.unit_price],
+                    (err) => {
+                      if (err) return reject(err);
+                      resolve();
+                    }
+                  );
+                })
+              );
+            });
+            
+            Promise.all(orderItemPromises)
+              .then(() => {
+                db.run('COMMIT');
+                res.status(201).json({ 
+                  success: true, 
+                  order_id: orderId,
+                  total_price: totalPrice
+                });
+              })
+              .catch(err => {
+                console.error('Error creating order items:', err);
+                db.run('ROLLBACK');
+                res.status(500).json({ error: 'Failed to create order items' });
+              });
+          }
+        );
+      })
+      .catch(err => {
+        console.error('Error validating order items:', err);
+        db.run('ROLLBACK');
+        res.status(400).json({ error: err.message || 'Failed to validate order items' });
+      });
   });
 });
 
-// Add new address (admin only)
-app.post('/api/addresses', checkAuthentication('admin'), (req, res) => {
-  const { name, is_restaurant, latitude, longitude } = req.body;
+// Get order details including items
+app.get('/api/orders/:id', (req, res) => {
+  const orderId = req.params.id;
+  const userId = req.session.user?.id;
+  const userRole = req.session.user?.role;
   
-  // Validate input
-  if (!name || latitude === undefined || longitude === undefined || is_restaurant === undefined) {
-    return res.status(400).json({ error: 'All fields are required' });
+  if (!userId) {
+    return res.status(401).json({ error: 'Authentication required' });
   }
   
-  db.run(
-    'INSERT INTO addresses (name, is_restaurant, latitude, longitude) VALUES (?, ?, ?, ?)',
-    [name, is_restaurant, latitude, longitude],
-    function(err) {
-      if (err) {
-        return res.status(500).json({ error: 'Failed to add address' });
+  // Query to get order details
+  const orderQuery = `
+    SELECT o.*, 
+           a_customer.name as customer_name,
+           a_restaurant.name as restaurant_name
+    FROM orders o
+    JOIN addresses a_customer ON o.customer_address_id = a_customer.id
+    JOIN addresses a_restaurant ON o.restaurant_address_id = a_restaurant.id
+    WHERE o.id = ?
+  `;
+  
+  // Query to get order items
+  const itemsQuery = `
+    SELECT oi.*, fi.name, fi.description
+    FROM order_items oi
+    JOIN food_items fi ON oi.food_item_id = fi.id
+    WHERE oi.order_id = ?
+  `;
+  
+  // Check permissions based on role
+  let permissionCheck = Promise.resolve(true);
+  
+  if (userRole !== 'admin') {
+    permissionCheck = new Promise((resolve, reject) => {
+      let query = '';
+      
+      if (userRole === 'merchant') {
+        query = 'SELECT 1 FROM orders WHERE id = ? AND merchant_id = ?';
+      } else if (userRole === 'courier') {
+        query = 'SELECT 1 FROM orders WHERE id = ? AND courier_id = ?';
+      } else if (userRole === 'customer') {
+        // For customers, we need a more complex check
+        // In a full system, you'd have a link between customers and addresses
+        // This is simplified - would need improvement in a real app
+        query = `
+          SELECT 1 FROM orders o
+          JOIN addresses a ON o.customer_address_id = a.id
+          WHERE o.id = ? AND a.name LIKE ?
+        `;
       }
       
-      // After adding new address, we need to update travel times
-      const newAddressId = this.lastID;
+      if (!query) {
+        resolve(false); // Unknown role - no permission
+        return;
+      }
       
-      // Get all other addresses
-      db.all('SELECT id FROM addresses WHERE id != ?', [newAddressId], (err, addresses) => {
+      const params = userRole === 'customer' 
+        ? [orderId, `%${req.session.user.name}%`] 
+        : [orderId, userId];
+      
+      db.get(query, params, (err, row) => {
         if (err) {
-          return res.status(500).json({ error: 'Failed to retrieve addresses for travel time calculation' });
+          console.error('Error checking order permissions:', err);
+          reject(err);
+          return;
         }
         
-        // Create travel times to and from all other addresses
-        const travelTimePromises = [];
-        
-        addresses.forEach(addr => {
-          // Random travel time between 5-30 minutes
-          const timeToAddr = Math.floor(Math.random() * 26) + 5;
-          const timeFromAddr = Math.floor(Math.random() * 26) + 5;
-          
-          travelTimePromises.push(
-            new Promise((resolve, reject) => {
-              // Time from new address to existing address
-              db.run(
-                'INSERT INTO travel_times (from_address_id, to_address_id, time_in_minutes) VALUES (?, ?, ?)',
-                [newAddressId, addr.id, timeToAddr],
-                err => err ? reject(err) : resolve()
-              );
-            })
-          );
-          
-          travelTimePromises.push(
-            new Promise((resolve, reject) => {
-              // Time from existing address to new address
-              db.run(
-                'INSERT INTO travel_times (from_address_id, to_address_id, time_in_minutes) VALUES (?, ?, ?)',
-                [addr.id, newAddressId, timeFromAddr],
-                err => err ? reject(err) : resolve()
-              );
-            })
-          );
-        });
-        
-        Promise.all(travelTimePromises)
-          .then(() => {
-            res.status(201).json({
-              success: true,
-              message: 'Address added successfully',
-              address_id: newAddressId
-            });
-          })
-          .catch(err => {
-            console.error('Failed to create travel times:', err);
-            res.status(500).json({
-              success: true, // Still return success since the address was created
-              warning: 'Address added but travel times may be incomplete',
-              address_id: newAddressId
-            });
-          });
+        resolve(!!row); // Has permission if any row is returned
       });
-    }
-  );
-});
-
-// Start server
-app.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
+    });
+  }
+  
+  // Check permissions and get order details
+  permissionCheck
+    .then(hasPermission => {
+      if (!hasPermission && userRole !== 'admin') {
+        return res.status(403).json({ error: 'You do not have permission to view this order' });
+      }
+      
+      // Get order details
+      db.get(orderQuery, [orderId], (err, order) => {
+        if (err) {
+          return res.status(500).json({ error: 'Failed to retrieve order' });
+        }
+        
+        if (!order) {
+          return res.status(404).json({ error: 'Order not found' });
+        }
+        
+        // Get order items
+        db.all(itemsQuery, [orderId], (err, items) => {
+          if (err) {
+            return res.status(500).json({ error: 'Failed to retrieve order items' });
+          }
+          
+          // Return complete order with items
+          res.json({
+            ...order,
+            items: items
+          });
+        });
+      });
+    })
+    .catch(err => {
+      console.error('Error checking order permissions:', err);
+      res.status(500).json({ error: 'Failed to check order permissions' });
+    });
 });
