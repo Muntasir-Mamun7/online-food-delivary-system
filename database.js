@@ -13,7 +13,7 @@ function initializeDatabase() {
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       username TEXT UNIQUE NOT NULL,
       password TEXT NOT NULL,
-      role TEXT NOT NULL CHECK (role IN ('merchant', 'courier', 'admin')),
+      role TEXT NOT NULL CHECK (role IN ('merchant', 'courier', 'admin', 'customer')),
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     )`);
 
