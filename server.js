@@ -59,11 +59,17 @@ function checkAuthentication(role) {
 // API routes
 // Registration endpoint
 app.post('/api/register', (req, res) => {
-  const { username, password, role } = req.body;
+  const { username, email, password, role } = req.body;
   
   // Validate input
-  if (!username || !password || !role) {
+  if (!username || !email || !password || !role) {
     return res.status(400).json({ error: 'All fields are required' });
+  }
+  
+  // Validate email format
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  if (!emailRegex.test(email)) {
+    return res.status(400).json({ error: 'Invalid email format' });
   }
   
   // Only allow valid roles
@@ -72,14 +78,14 @@ app.post('/api/register', (req, res) => {
     return res.status(400).json({ error: 'Invalid role selected' });
   }
   
-  // Check if username already exists
-  db.get('SELECT id FROM users WHERE username = ?', [username], (err, user) => {
+  // Check if username or email already exists
+  db.get('SELECT id FROM users WHERE username = ? OR email = ?', [username, email], (err, user) => {
     if (err) {
       return res.status(500).json({ error: 'Database error during registration' });
     }
     
     if (user) {
-      return res.status(409).json({ error: 'Username already exists' });
+      return res.status(409).json({ error: 'Username or email already exists' });
     }
     
     // Hash password and create user
@@ -89,8 +95,8 @@ app.post('/api/register', (req, res) => {
       }
       
       db.run(
-        'INSERT INTO users (username, password, role) VALUES (?, ?, ?)',
-        [username, hash, role],
+        'INSERT INTO users (username, email, password, role) VALUES (?, ?, ?, ?)',
+        [username, email, hash, role],
         function(err) {
           if (err) {
             return res.status(500).json({ error: 'Failed to register user' });
@@ -107,50 +113,54 @@ app.post('/api/register', (req, res) => {
   });
 });
 
-// Login
+// Login - allow login with either username or email
 app.post('/api/login', (req, res) => {
-  const { username, password, role } = req.body;
+  const { login, password, role } = req.body;
   
-  if (!username || !password || !role) {
+  if (!login || !password || !role) {
     return res.status(400).json({ error: 'All fields are required' });
   }
   
-  // Get user with the specified username and role
-  db.get(
-    'SELECT * FROM users WHERE username = ? AND role = ?',
-    [username, role],
-    (err, user) => {
-      if (err) {
-        return res.status(500).json({ error: 'Internal server error' });
+  // Check if login is email or username
+  const isEmail = login.includes('@');
+  const query = isEmail 
+    ? 'SELECT * FROM users WHERE email = ? AND role = ?'
+    : 'SELECT * FROM users WHERE username = ? AND role = ?';
+  
+  // Get user with the specified login and role
+  db.get(query, [login, role], (err, user) => {
+    if (err) {
+      return res.status(500).json({ error: 'Internal server error' });
+    }
+    
+    if (!user) {
+      return res.status(401).json({ error: 'Invalid credentials or role' });
+    }
+    
+    bcrypt.compare(password, user.password, (err, result) => {
+      if (err || !result) {
+        return res.status(401).json({ error: 'Invalid credentials or role' });
       }
       
-      if (!user) {
-        return res.status(401).json({ error: 'Invalid username, password, or role' });
-      }
+      // Store user in session (without password)
+      req.session.user = {
+        id: user.id,
+        username: user.username,
+        email: user.email,
+        role: user.role
+      };
       
-      bcrypt.compare(password, user.password, (err, result) => {
-        if (err || !result) {
-          return res.status(401).json({ error: 'Invalid username, password, or role' });
-        }
-        
-        // Store user in session (without password)
-        req.session.user = {
+      res.json({
+        success: true,
+        user: {
           id: user.id,
           username: user.username,
+          email: user.email,
           role: user.role
-        };
-        
-        res.json({
-          success: true,
-          user: {
-            id: user.id,
-            username: user.username,
-            role: user.role
-          }
-        });
+        }
       });
-    }
-  );
+    });
+  });
 });
 
 // Logout
@@ -392,7 +402,7 @@ app.put('/api/orders/:id/status', checkAuthentication(), (req, res) => {
 
 // Get users (admin only)
 app.get('/api/users', checkAuthentication('admin'), (req, res) => {
-  db.all('SELECT id, username, role, created_at FROM users', (err, users) => {
+  db.all('SELECT id, username, email, role, created_at FROM users', (err, users) => {
     if (err) {
       return res.status(500).json({ error: 'Failed to fetch users' });
     }
@@ -402,21 +412,27 @@ app.get('/api/users', checkAuthentication('admin'), (req, res) => {
 
 // Create user (admin only)
 app.post('/api/users', checkAuthentication('admin'), (req, res) => {
-  const { username, password, role } = req.body;
+  const { username, email, password, role } = req.body;
   
   // Validate input
-  if (!username || !password || !role) {
+  if (!username || !email || !password || !role) {
     return res.status(400).json({ error: 'All fields are required' });
   }
   
-  // Check if username already exists
-  db.get('SELECT id FROM users WHERE username = ?', [username], (err, user) => {
+  // Validate email format
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  if (!emailRegex.test(email)) {
+    return res.status(400).json({ error: 'Invalid email format' });
+  }
+  
+  // Check if username or email already exists
+  db.get('SELECT id FROM users WHERE username = ? OR email = ?', [username, email], (err, user) => {
     if (err) {
       return res.status(500).json({ error: 'Database error during user creation' });
     }
     
     if (user) {
-      return res.status(409).json({ error: 'Username already exists' });
+      return res.status(409).json({ error: 'Username or email already exists' });
     }
     
     // Hash password and create user
@@ -426,8 +442,8 @@ app.post('/api/users', checkAuthentication('admin'), (req, res) => {
       }
       
       db.run(
-        'INSERT INTO users (username, password, role) VALUES (?, ?, ?)',
-        [username, hash, role],
+        'INSERT INTO users (username, email, password, role) VALUES (?, ?, ?, ?)',
+        [username, email, hash, role],
         function(err) {
           if (err) {
             return res.status(500).json({ error: 'Failed to create user' });
