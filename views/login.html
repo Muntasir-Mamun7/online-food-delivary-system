@@ -20,9 +20,16 @@
 
         <main>
             <div class="form-container">
-                <h2>Login</h2>
+                <div class="tabs">
+                    <button class="tab-button active" data-form="login-form">Login</button>
+                    <button class="tab-button" data-form="register-form">Register</button>
+                </div>
+                
                 <div class="message-box" id="message-box"></div>
-                <form id="login-form">
+                
+                <!-- Login Form -->
+                <form id="login-form" class="form-tab active">
+                    <h2>Login</h2>
                     <div class="form-group">
                         <label for="username">Username:</label>
                         <input type="text" id="username" name="username" required>
@@ -32,9 +39,49 @@
                         <input type="password" id="password" name="password" required>
                     </div>
                     <div class="form-group">
+                        <label for="login-role">Login As:</label>
+                        <select id="login-role" name="role" required>
+                            <option value="">-- Select Role --</option>
+                            <option value="customer">Customer</option>
+                            <option value="merchant">Merchant</option>
+                            <option value="courier">Courier</option>
+                            <option value="admin">Administrator</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
                         <button type="submit" class="btn">Login</button>
                     </div>
                 </form>
+                
+                <!-- Registration Form -->
+                <form id="register-form" class="form-tab">
+                    <h2>Create Account</h2>
+                    <div class="form-group">
+                        <label for="reg-username">Username:</label>
+                        <input type="text" id="reg-username" name="username" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="reg-password">Password:</label>
+                        <input type="password" id="reg-password" name="password" required minlength="6">
+                    </div>
+                    <div class="form-group">
+                        <label for="confirm-password">Confirm Password:</label>
+                        <input type="password" id="confirm-password" name="confirm_password" required minlength="6">
+                    </div>
+                    <div class="form-group">
+                        <label for="reg-role">Register As:</label>
+                        <select id="reg-role" name="role" required>
+                            <option value="">-- Select Role --</option>
+                            <option value="customer">Customer</option>
+                            <option value="merchant">Merchant</option>
+                            <option value="courier">Courier</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <button type="submit" class="btn">Register</button>
+                    </div>
+                </form>
+                
                 <div class="login-info">
                     <p>Default Admin Login: username: admin, password: admin123</p>
                 </div>
@@ -47,12 +94,39 @@
     </div>
     
     <script>
+        // Tab switching functionality
+        document.addEventListener('DOMContentLoaded', () => {
+            const tabButtons = document.querySelectorAll('.tab-button');
+            const forms = document.querySelectorAll('.form-tab');
+            
+            tabButtons.forEach(button => {
+                button.addEventListener('click', () => {
+                    // Deactivate all tabs and forms
+                    tabButtons.forEach(btn => btn.classList.remove('active'));
+                    forms.forEach(form => form.classList.remove('active'));
+                    
+                    // Activate the clicked tab and corresponding form
+                    button.classList.add('active');
+                    const formId = button.getAttribute('data-form');
+                    document.getElementById(formId).classList.add('active');
+                });
+            });
+        });
+
+        // Login form functionality
         document.getElementById('login-form').addEventListener('submit', async (e) => {
             e.preventDefault();
             
             const username = document.getElementById('username').value;
             const password = document.getElementById('password').value;
+            const role = document.getElementById('login-role').value;
             const messageBox = document.getElementById('message-box');
+            
+            if (!username || !password || !role) {
+                messageBox.textContent = 'Please fill in all fields';
+                messageBox.className = 'message-box error';
+                return;
+            }
             
             try {
                 const response = await fetch('/api/login', {
@@ -60,7 +134,7 @@
                     headers: {
                         'Content-Type': 'application/json'
                     },
-                    body: JSON.stringify({ username, password })
+                    body: JSON.stringify({ username, password, role })
                 });
                 
                 const data = await response.json();
@@ -77,6 +151,8 @@
                             window.location.href = '/courier-dashboard';
                         } else if (data.user.role === 'admin') {
                             window.location.href = '/admin-dashboard';
+                        } else if (data.user.role === 'customer') {
+                            window.location.href = '/customer-dashboard';
                         }
                     }, 1000);
                 } else {
@@ -85,6 +161,57 @@
                 }
             } catch (err) {
                 messageBox.textContent = 'Error occurred during login';
+                messageBox.className = 'message-box error';
+                console.error(err);
+            }
+        });
+
+        // Registration form functionality
+        document.getElementById('register-form').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            const username = document.getElementById('reg-username').value;
+            const password = document.getElementById('reg-password').value;
+            const confirmPassword = document.getElementById('confirm-password').value;
+            const role = document.getElementById('reg-role').value;
+            const messageBox = document.getElementById('message-box');
+            
+            if (!username || !password || !confirmPassword || !role) {
+                messageBox.textContent = 'Please fill in all fields';
+                messageBox.className = 'message-box error';
+                return;
+            }
+            
+            if (password !== confirmPassword) {
+                messageBox.textContent = 'Passwords do not match';
+                messageBox.className = 'message-box error';
+                return;
+            }
+            
+            try {
+                const response = await fetch('/api/register', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ username, password, role })
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    messageBox.textContent = 'Registration successful! You can now login.';
+                    messageBox.className = 'message-box success';
+                    
+                    // Reset form and switch to login tab
+                    document.getElementById('register-form').reset();
+                    document.querySelector('.tab-button[data-form="login-form"]').click();
+                } else {
+                    messageBox.textContent = data.error || 'Registration failed';
+                    messageBox.className = 'message-box error';
+                }
+            } catch (err) {
+                messageBox.textContent = 'Error occurred during registration';
                 messageBox.className = 'message-box error';
                 console.error(err);
             }
