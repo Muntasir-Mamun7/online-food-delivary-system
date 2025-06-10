@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Login - Food Delivery System</title>
+    <title>Login / Register - Food Delivery System</title>
     <link rel="stylesheet" href="/css/style.css">
 </head>
 <body>
@@ -13,8 +13,7 @@
             <nav>
                 <ul>
                     <li><a href="/">Home</a></li>
-                    <li><a href="/login" class="active">Login</a></li>
-                    <li><a href="/register">Register</a></li>
+                    <li><a href="/login" class="active">Login / Register</a></li>
                 </ul>
             </nav>
         </div>
@@ -23,37 +22,83 @@
     <main>
         <div class="container">
             <div class="form-container">
-                <h2>Login</h2>
-                <div id="login-message" class="message-box" style="display: none;"></div>
-                
                 <div class="tabs">
-                    <button class="tab-button active" data-tab="merchant-tab">Merchant</button>
-                    <button class="tab-button" data-tab="courier-tab">Courier</button>
-                    <button class="tab-button" data-tab="admin-tab">Admin</button>
-                    <button class="tab-button" data-tab="customer-tab">Customer</button>
+                    <button class="tab-button active" data-tab="login-tab">Login</button>
+                    <button class="tab-button" data-tab="register-tab">Register</button>
                 </div>
                 
-                <form id="login-form">
-                    <div class="form-group">
-                        <label for="login">Username or Email</label>
-                        <input type="text" id="login" name="login" required>
-                    </div>
+                <!-- Login Form -->
+                <div id="login-tab" class="form-tab active">
+                    <h2>Login</h2>
+                    <div id="login-message" class="message-box" style="display: none;"></div>
                     
-                    <div class="form-group">
-                        <label for="password">Password</label>
-                        <input type="password" id="password" name="password" required>
-                    </div>
+                    <form id="login-form">
+                        <div class="form-group">
+                            <label for="login">Username or Email</label>
+                            <input type="text" id="login" name="login" required>
+                        </div>
+                        
+                        <div class="form-group">
+                            <label for="password">Password</label>
+                            <input type="password" id="password" name="password" required>
+                        </div>
+                        
+                        <div class="form-group">
+                            <label for="login-role">Role</label>
+                            <select id="login-role" name="role" required>
+                                <option value="merchant">Merchant</option>
+                                <option value="courier">Courier</option>
+                                <option value="admin">Admin</option>
+                                <option value="customer">Customer</option>
+                            </select>
+                        </div>
+                        
+                        <div class="form-group">
+                            <button type="submit" class="btn">Login</button>
+                        </div>
+                    </form>
+                </div>
+                
+                <!-- Registration Form -->
+                <div id="register-tab" class="form-tab">
+                    <h2>Create an Account</h2>
+                    <div id="register-message" class="message-box" style="display: none;"></div>
                     
-                    <input type="hidden" id="role" name="role" value="merchant">
-                    
-                    <div class="form-group">
-                        <button type="submit" class="btn">Login</button>
-                    </div>
-                    
-                    <div class="login-info">
-                        Don't have an account? <a href="/register">Register here</a>
-                    </div>
-                </form>
+                    <form id="register-form">
+                        <div class="form-group">
+                            <label for="username">Username</label>
+                            <input type="text" id="username" name="username" required>
+                        </div>
+                        
+                        <div class="form-group">
+                            <label for="email">Email</label>
+                            <input type="email" id="email" name="email" required>
+                        </div>
+                        
+                        <div class="form-group">
+                            <label for="reg-password">Password</label>
+                            <input type="password" id="reg-password" name="password" required minlength="6">
+                        </div>
+                        
+                        <div class="form-group">
+                            <label for="confirm-password">Confirm Password</label>
+                            <input type="password" id="confirm-password" name="confirm-password" required minlength="6">
+                        </div>
+                        
+                        <div class="form-group">
+                            <label for="reg-role">Role</label>
+                            <select id="reg-role" name="role" required>
+                                <option value="customer">Customer</option>
+                                <option value="merchant">Merchant</option>
+                                <option value="courier">Courier</option>
+                            </select>
+                        </div>
+                        
+                        <div class="form-group">
+                            <button type="submit" class="btn">Register</button>
+                        </div>
+                    </form>
+                </div>
             </div>
         </div>
     </main>
@@ -67,8 +112,9 @@
     <script>
         document.addEventListener('DOMContentLoaded', function() {
             const loginForm = document.getElementById('login-form');
-            const roleInput = document.getElementById('role');
+            const registerForm = document.getElementById('register-form');
             const tabButtons = document.querySelectorAll('.tab-button');
+            const formTabs = document.querySelectorAll('.form-tab');
             
             // Tab switching
             tabButtons.forEach(button => {
@@ -77,27 +123,22 @@
                     tabButtons.forEach(btn => btn.classList.remove('active'));
                     this.classList.add('active');
                     
-                    // Update role based on selected tab
+                    // Hide all form tabs
+                    formTabs.forEach(tab => tab.classList.remove('active'));
+                    
+                    // Show the selected tab
                     const tabId = this.getAttribute('data-tab');
-                    if (tabId === 'merchant-tab') {
-                        roleInput.value = 'merchant';
-                    } else if (tabId === 'courier-tab') {
-                        roleInput.value = 'courier';
-                    } else if (tabId === 'admin-tab') {
-                        roleInput.value = 'admin';
-                    } else if (tabId === 'customer-tab') {
-                        roleInput.value = 'customer';
-                    }
+                    document.getElementById(tabId).classList.add('active');
                 });
             });
             
-            // Form submission
+            // Login form submission
             loginForm.addEventListener('submit', async function(event) {
                 event.preventDefault();
                 
                 const login = document.getElementById('login').value;
                 const password = document.getElementById('password').value;
-                const role = document.getElementById('role').value;
+                const role = document.getElementById('login-role').value;
                 const messageDiv = document.getElementById('login-message');
                 
                 try {
@@ -131,6 +172,73 @@
                     
                 } catch (error) {
                     console.error('Login error:', error);
+                    messageDiv.textContent = 'Network error. Please try again later.';
+                    messageDiv.className = 'message-box error';
+                    messageDiv.style.display = 'block';
+                }
+            });
+            
+            // Registration form validation and submission
+            registerForm.addEventListener('submit', async function(event) {
+                event.preventDefault();
+                
+                const username = document.getElementById('username').value;
+                const email = document.getElementById('email').value;
+                const password = document.getElementById('reg-password').value;
+                const confirmPassword = document.getElementById('confirm-password').value;
+                const role = document.getElementById('reg-role').value;
+                const messageDiv = document.getElementById('register-message');
+                
+                // Validate password match
+                if (password !== confirmPassword) {
+                    messageDiv.textContent = 'Passwords do not match.';
+                    messageDiv.className = 'message-box error';
+                    messageDiv.style.display = 'block';
+                    return;
+                }
+                
+                // Validate email format
+                const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+                if (!emailRegex.test(email)) {
+                    messageDiv.textContent = 'Please enter a valid email address.';
+                    messageDiv.className = 'message-box error';
+                    messageDiv.style.display = 'block';
+                    return;
+                }
+                
+                try {
+                    const response = await fetch('/api/register', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({ username, email, password, role })
+                    });
+                    
+                    const data = await response.json();
+                    
+                    if (!response.ok) {
+                        messageDiv.textContent = data.error || 'Registration failed. Please try again.';
+                        messageDiv.className = 'message-box error';
+                        messageDiv.style.display = 'block';
+                        return;
+                    }
+                    
+                    // Registration successful
+                    messageDiv.textContent = 'Registration successful! You can now login.';
+                    messageDiv.className = 'message-box success';
+                    messageDiv.style.display = 'block';
+                    
+                    // Clear the form
+                    registerForm.reset();
+                    
+                    // Switch to login tab after a short delay
+                    setTimeout(() => {
+                        document.querySelector('[data-tab="login-tab"]').click();
+                    }, 2000);
+                    
+                } catch (error) {
+                    console.error('Registration error:', error);
                     messageDiv.textContent = 'Network error. Please try again later.';
                     messageDiv.className = 'message-box error';
                     messageDiv.style.display = 'block';
