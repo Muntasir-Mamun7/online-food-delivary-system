@@ -3,218 +3,139 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Login - Online Food Delivery System</title>
+    <title>Login - Food Delivery System</title>
     <link rel="stylesheet" href="/css/style.css">
 </head>
 <body>
-    <div class="container">
-        <header>
-            <h1>Online Food Delivery System</h1>
+    <header>
+        <div class="container">
+            <h1>Food Delivery System</h1>
             <nav>
                 <ul>
                     <li><a href="/">Home</a></li>
                     <li><a href="/login" class="active">Login</a></li>
+                    <li><a href="/register">Register</a></li>
                 </ul>
             </nav>
-        </header>
+        </div>
+    </header>
 
-        <main>
+    <main>
+        <div class="container">
             <div class="form-container">
+                <h2>Login</h2>
+                <div id="login-message" class="message-box" style="display: none;"></div>
+                
                 <div class="tabs">
-                    <button class="tab-button active" data-form="login-form">Login</button>
-                    <button class="tab-button" data-form="register-form">Register</button>
+                    <button class="tab-button active" data-tab="merchant-tab">Merchant</button>
+                    <button class="tab-button" data-tab="courier-tab">Courier</button>
+                    <button class="tab-button" data-tab="admin-tab">Admin</button>
+                    <button class="tab-button" data-tab="customer-tab">Customer</button>
                 </div>
                 
-                <div class="message-box" id="message-box"></div>
-                
-                <!-- Login Form -->
-                <form id="login-form" class="form-tab active">
-                    <h2>Login</h2>
+                <form id="login-form">
                     <div class="form-group">
-                        <label for="username">Username:</label>
-                        <input type="text" id="username" name="username" required>
+                        <label for="login">Username or Email</label>
+                        <input type="text" id="login" name="login" required>
                     </div>
+                    
                     <div class="form-group">
-                        <label for="password">Password:</label>
+                        <label for="password">Password</label>
                         <input type="password" id="password" name="password" required>
                     </div>
-                    <div class="form-group">
-                        <label for="login-role">Login As:</label>
-                        <select id="login-role" name="role" required>
-                            <option value="">-- Select Role --</option>
-                            <option value="customer">Customer</option>
-                            <option value="merchant">Merchant</option>
-                            <option value="courier">Courier</option>
-                            <option value="admin">Administrator</option>
-                        </select>
-                    </div>
+                    
+                    <input type="hidden" id="role" name="role" value="merchant">
+                    
                     <div class="form-group">
                         <button type="submit" class="btn">Login</button>
                     </div>
-                </form>
-                
-                <!-- Registration Form -->
-                <form id="register-form" class="form-tab">
-                    <h2>Create Account</h2>
-                    <div class="form-group">
-                        <label for="reg-username">Username:</label>
-                        <input type="text" id="reg-username" name="username" required>
-                    </div>
-                    <div class="form-group">
-                        <label for="reg-password">Password:</label>
-                        <input type="password" id="reg-password" name="password" required minlength="6">
-                    </div>
-                    <div class="form-group">
-                        <label for="confirm-password">Confirm Password:</label>
-                        <input type="password" id="confirm-password" name="confirm_password" required minlength="6">
-                    </div>
-                    <div class="form-group">
-                        <label for="reg-role">Register As:</label>
-                        <select id="reg-role" name="role" required>
-                            <option value="">-- Select Role --</option>
-                            <option value="customer">Customer</option>
-                            <option value="merchant">Merchant</option>
-                            <option value="courier">Courier</option>
-                        </select>
-                    </div>
-                    <div class="form-group">
-                        <button type="submit" class="btn">Register</button>
-                    </div>
-                </form>
-                
-                <div class="login-info">
-                    <p>Default Admin Login: username: admin, password: admin123</p>
-                </div>
-            </div>
-        </main>
-
-        <footer>
-            <p>&copy; 2025 Online Food Delivery System</p>
-        </footer>
-    </div>
-    
-    <script>
-        // Tab switching functionality
-        document.addEventListener('DOMContentLoaded', () => {
-            const tabButtons = document.querySelectorAll('.tab-button');
-            const forms = document.querySelectorAll('.form-tab');
-            
-            tabButtons.forEach(button => {
-                button.addEventListener('click', () => {
-                    // Deactivate all tabs and forms
-                    tabButtons.forEach(btn => btn.classList.remove('active'));
-                    forms.forEach(form => form.classList.remove('active'));
                     
-                    // Activate the clicked tab and corresponding form
-                    button.classList.add('active');
-                    const formId = button.getAttribute('data-form');
-                    document.getElementById(formId).classList.add('active');
+                    <div class="login-info">
+                        Don't have an account? <a href="/register">Register here</a>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </main>
+
+    <footer>
+        <div class="container">
+            <p>&copy; 2025 Food Delivery System. All rights reserved.</p>
+        </div>
+    </footer>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            const loginForm = document.getElementById('login-form');
+            const roleInput = document.getElementById('role');
+            const tabButtons = document.querySelectorAll('.tab-button');
+            
+            // Tab switching
+            tabButtons.forEach(button => {
+                button.addEventListener('click', function() {
+                    // Update active tab button
+                    tabButtons.forEach(btn => btn.classList.remove('active'));
+                    this.classList.add('active');
+                    
+                    // Update role based on selected tab
+                    const tabId = this.getAttribute('data-tab');
+                    if (tabId === 'merchant-tab') {
+                        roleInput.value = 'merchant';
+                    } else if (tabId === 'courier-tab') {
+                        roleInput.value = 'courier';
+                    } else if (tabId === 'admin-tab') {
+                        roleInput.value = 'admin';
+                    } else if (tabId === 'customer-tab') {
+                        roleInput.value = 'customer';
+                    }
                 });
             });
-        });
-
-        // Login form functionality
-        document.getElementById('login-form').addEventListener('submit', async (e) => {
-            e.preventDefault();
             
-            const username = document.getElementById('username').value;
-            const password = document.getElementById('password').value;
-            const role = document.getElementById('login-role').value;
-            const messageBox = document.getElementById('message-box');
-            
-            if (!username || !password || !role) {
-                messageBox.textContent = 'Please fill in all fields';
-                messageBox.className = 'message-box error';
-                return;
-            }
-            
-            try {
-                const response = await fetch('/api/login', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify({ username, password, role })
-                });
+            // Form submission
+            loginForm.addEventListener('submit', async function(event) {
+                event.preventDefault();
                 
-                const data = await response.json();
+                const login = document.getElementById('login').value;
+                const password = document.getElementById('password').value;
+                const role = document.getElementById('role').value;
+                const messageDiv = document.getElementById('login-message');
                 
-                if (data.success) {
-                    messageBox.textContent = 'Login successful! Redirecting...';
-                    messageBox.className = 'message-box success';
+                try {
+                    const response = await fetch('/api/login', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({ login, password, role })
+                    });
                     
-                    // Redirect based on role
-                    setTimeout(() => {
-                        if (data.user.role === 'merchant') {
-                            window.location.href = '/merchant-dashboard';
-                        } else if (data.user.role === 'courier') {
-                            window.location.href = '/courier-dashboard';
-                        } else if (data.user.role === 'admin') {
-                            window.location.href = '/admin-dashboard';
-                        } else if (data.user.role === 'customer') {
-                            window.location.href = '/customer-dashboard';
-                        }
-                    }, 1000);
-                } else {
-                    messageBox.textContent = data.error || 'Login failed';
-                    messageBox.className = 'message-box error';
-                }
-            } catch (err) {
-                messageBox.textContent = 'Error occurred during login';
-                messageBox.className = 'message-box error';
-                console.error(err);
-            }
-        });
-
-        // Registration form functionality
-        document.getElementById('register-form').addEventListener('submit', async (e) => {
-            e.preventDefault();
-            
-            const username = document.getElementById('reg-username').value;
-            const password = document.getElementById('reg-password').value;
-            const confirmPassword = document.getElementById('confirm-password').value;
-            const role = document.getElementById('reg-role').value;
-            const messageBox = document.getElementById('message-box');
-            
-            if (!username || !password || !confirmPassword || !role) {
-                messageBox.textContent = 'Please fill in all fields';
-                messageBox.className = 'message-box error';
-                return;
-            }
-            
-            if (password !== confirmPassword) {
-                messageBox.textContent = 'Passwords do not match';
-                messageBox.className = 'message-box error';
-                return;
-            }
-            
-            try {
-                const response = await fetch('/api/register', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify({ username, password, role })
-                });
-                
-                const data = await response.json();
-                
-                if (data.success) {
-                    messageBox.textContent = 'Registration successful! You can now login.';
-                    messageBox.className = 'message-box success';
+                    const data = await response.json();
                     
-                    // Reset form and switch to login tab
-                    document.getElementById('register-form').reset();
-                    document.querySelector('.tab-button[data-form="login-form"]').click();
-                } else {
-                    messageBox.textContent = data.error || 'Registration failed';
-                    messageBox.className = 'message-box error';
+                    if (!response.ok) {
+                        messageDiv.textContent = data.error || 'Login failed. Please try again.';
+                        messageDiv.className = 'message-box error';
+                        messageDiv.style.display = 'block';
+                        return;
+                    }
+                    
+                    // Login successful - redirect to appropriate dashboard
+                    if (role === 'merchant') {
+                        window.location.href = '/merchant-dashboard';
+                    } else if (role === 'courier') {
+                        window.location.href = '/courier-dashboard';
+                    } else if (role === 'admin') {
+                        window.location.href = '/admin-dashboard';
+                    } else if (role === 'customer') {
+                        window.location.href = '/customer-dashboard';
+                    }
+                    
+                } catch (error) {
+                    console.error('Login error:', error);
+                    messageDiv.textContent = 'Network error. Please try again later.';
+                    messageDiv.className = 'message-box error';
+                    messageDiv.style.display = 'block';
                 }
-            } catch (err) {
-                messageBox.textContent = 'Error occurred during registration';
-                messageBox.className = 'message-box error';
-                console.error(err);
-            }
+            });
         });
     </script>
 </body>
