@@ -123,6 +123,7 @@ async function loadTravelTimes() {
     try {
         const data = await fetchAPI('/api/travel-times');
         travelTimes = data;
+        console.log(`Loaded ${travelTimes.length} travel times`);
     } catch (err) {
         console.error('Error loading travel times:', err);
         throw err;
@@ -267,7 +268,7 @@ async function loadUsers() {
             usersTable.innerHTML = '';
             
             if (data.length === 0) {
-                usersTable.innerHTML = '<tr><td colspan="5" style="text-align: center;">No users found</td></tr>';
+                usersTable.innerHTML = '<tr><td colspan="6" style="text-align: center;">No users found</td></tr>';
                 return;
             }
             
@@ -276,6 +277,7 @@ async function loadUsers() {
                 row.innerHTML = `
                     <td>${user.id}</td>
                     <td>${user.username}</td>
+                    <td>${user.email || 'N/A'}</td>
                     <td>${user.role}</td>
                     <td>${formatDateTime(user.created_at)}</td>
                     <td>
@@ -451,6 +453,7 @@ function setupAdminForms() {
             const formData = new FormData(userForm);
             const userData = {
                 username: formData.get('username'),
+                email: formData.get('email'),
                 password: formData.get('password'),
                 role: formData.get('role')
             };
@@ -529,7 +532,7 @@ function setupAdminForms() {
 }
 
 // Route optimization algorithm
-function handleRouteOptimization() {
+async function handleRouteOptimization() {
     try {
         // Only proceed if we have orders to optimize
         if (courierOrders.length === 0) {
@@ -537,12 +540,21 @@ function handleRouteOptimization() {
             return;
         }
         
+        // Ensure travel times are loaded
+        if (travelTimes.length === 0) {
+            await loadTravelTimes();
+            if (travelTimes.length === 0) {
+                showMessage('order-message', 'Could not load travel time data.', 'error');
+                return;
+            }
+        }
+        
         // Get restaurant locations and customer locations from orders
         const orderLocations = courierOrders.map(order => {
             return {
                 orderId: order.id,
-                restaurantId: order.restaurant_address_id,
-                customerId: order.customer_address_id,
+                restaurantId: parseInt(order.restaurant_address_id),
+                customerId: parseInt(order.customer_address_id),
                 dueTime: new Date(order.due_time).getTime()
             };
         });
@@ -550,8 +562,10 @@ function handleRouteOptimization() {
         // Find the restaurant (assuming all orders are from the same restaurant for simplicity)
         const restaurantId = orderLocations[0].restaurantId;
         
-        // Get the optimized route
-        const optimizedRoute = optimizeDeliveryRoute(restaurantId, orderLocations);
+        // Get the optimized route using dynamic programming
+        console.time('Route Optimization');
+        const optimizedRoute = optimizeDeliveryRouteDynamicProgramming(restaurantId, orderLocations);
+        console.timeEnd('Route Optimization');
         
         // Display the optimized route
         renderOptimizedRoute(optimizedRoute.route, optimizedRoute.totalTime);
@@ -565,93 +579,159 @@ function handleRouteOptimization() {
     }
 }
 
-function optimizeDeliveryRoute(startNodeId, orders) {
-    // Implementation of the algorithm as described in the requirements
+// Dynamic Programming approach for route optimization
+function optimizeDeliveryRouteDynamicProgramming(startNodeId, orders) {
+    // If no orders, return a route with just the restaurant
+    if (orders.length === 0) {
+        return { route: [startNodeId], visitedOrders: [], totalTime: 0 };
+    }
     
-    // We start at the merchant (restaurant) node
-    let existingNodes = new Set([startNodeId]);
-    let currentNodeId = startNodeId;
-    let currentTime = 0;  // Starting time
-    let route = [startNodeId];  // The route starts at the restaurant
+    // Convert to integers to ensure proper comparison
+    startNodeId = parseInt(startNodeId);
     
-    // Dictionary to keep track of customer nodes that have been visited
-    const visitedCustomers = new Set();
+    // Store all customer IDs for easy access
+    const customerIds = orders.map(order => parseInt(order.customerId));
     
-    // Keep track of total travel time
-    let totalTravelTime = 0;
+    // Add starting node to all locations
+    const allLocations = [startNodeId, ...customerIds];
     
-    // Continue until all customer locations are visited or no more valid moves
-    while (visitedCustomers.size < orders.length) {
-        let bestNextNode = null;
-        let bestTravelTime = Infinity;
-        let canAddMore = false;
+    // Create a mapping from customer ID to order index for quick lookup
+    const customerToOrderIndex = {};
+    orders.forEach((order, index) => {
+        customerToOrderIndex[order.customerId] = index;
+    });
+    
+    // Initialize memoization table for dynamic programming
+    // Format: memo[bitmask][currentLocation] = { time: bestTime, prev: previousLocation }
+    const memo = new Map();
+    
+    // Helper function to create a key for memoization
+    function createKey(mask, currentLoc) {
+        return `${mask}-${currentLoc}`;
+    }
+    
+    // Recursive function to find the optimal route
+    function findBestRoute(mask, currentLoc, currentTime) {
+        // If all customers are visited (all bits in mask are 1)
+        if (mask === (1 << orders.length) - 1) {
+            // Return to restaurant
+            const timeToReturn = findTravelTime(currentLoc, startNodeId);
+            return { 
+                time: timeToReturn, 
+                prev: -1,
+                isValid: true,
+                route: [startNodeId]
+            };
+        }
         
-        // For each order that hasn't been delivered yet
-        for (const order of orders) {
-            if (visitedCustomers.has(order.orderId)) {
-                continue; // Skip already visited customers
-            }
-            
-            // Check travel time from current location to the customer
-            const travelTimeToCustomer = findTravelTime(currentNodeId, order.customerId);
-            
-            // Check if adding this customer would violate due time
-            if (currentTime + travelTimeToCustomer <= order.dueTime) {
-                if (travelTimeToCustomer < bestTravelTime) {
-                    bestTravelTime = travelTimeToCustomer;
-                    bestNextNode = order.customerId;
-                    canAddMore = true;
+        // Check if we've already computed this state
+        const key = createKey(mask, currentLoc);
+        if (memo.has(key)) {
+            return memo.get(key);
+        }
+        
+        let bestTime = Infinity;
+        let bestPrev = -1;
+        let bestRoute = [];
+        let isAnyValid = false;
+        
+        // Try visiting each unvisited customer
+        for (let i = 0; i < orders.length; i++) {
+            // If customer i is not visited yet (bit i in mask is 0)
+            if ((mask & (1 << i)) === 0) {
+                const customerId = orders[i].customerId;
+                const orderDueTime = orders[i].dueTime;
+                
+                // Calculate travel time to this customer
+                const travelTime = findTravelTime(currentLoc, customerId);
+                const arrivalTime = currentTime + travelTime;
+                
+                // Check if we can reach this customer before due time
+                if (arrivalTime <= orderDueTime) {
+                    // Recursively find the best route after visiting this customer
+                    const newMask = mask | (1 << i);
+                    const result = findBestRoute(newMask, customerId, arrivalTime);
+                    
+                    // Only consider valid routes
+                    if (result.isValid) {
+                        const totalTime = travelTime + result.time;
+                        
+                        if (totalTime < bestTime) {
+                            bestTime = totalTime;
+                            bestPrev = i;
+                            bestRoute = [customerId, ...result.route];
+                            isAnyValid = true;
+                        }
+                    }
                 }
             }
         }
         
-        // If no valid move is found, break the loop
-        if (!canAddMore) {
-            break;
-        }
+        // Store result in memoization table
+        const result = {
+            time: bestTime,
+            prev: bestPrev,
+            isValid: isAnyValid,
+            route: bestRoute
+        };
+        memo.set(key, result);
         
-        // Add the best node to our route
-        existingNodes.add(bestNextNode);
-        route.push(bestNextNode);
-        currentNodeId = bestNextNode;
-        currentTime += bestTravelTime;
-        totalTravelTime += bestTravelTime;
-        
-        // Mark the order as visited (find the order that corresponds to this customer)
-        for (const order of orders) {
-            if (order.customerId === bestNextNode) {
-                visitedCustomers.add(order.orderId);
-                break;
-            }
-        }
+        return result;
     }
     
-    // Optional: return to the restaurant at the end
-    if (currentNodeId !== startNodeId) {
-        const travelTimeBack = findTravelTime(currentNodeId, startNodeId);
-        route.push(startNodeId);
-        totalTravelTime += travelTimeBack;
+    // Start the algorithm with no customers visited, from the restaurant, at time 0
+    const result = findBestRoute(0, startNodeId, 0);
+    
+    // Build the complete route
+    const finalRoute = [startNodeId, ...result.route];
+    
+    // Build the list of visited orders
+    const visitedOrders = [];
+    for (let i = 1; i < finalRoute.length - 1; i++) {
+        const customerId = finalRoute[i];
+        const orderIndex = customerToOrderIndex[customerId];
+        if (orderIndex !== undefined) {
+            visitedOrders.push(orders[orderIndex].orderId);
+        }
     }
     
     return {
-        route: route,
-        visitedOrders: Array.from(visitedCustomers),
-        totalTime: totalTravelTime
+        route: finalRoute,
+        visitedOrders: visitedOrders,
+        totalTime: result.time
     };
 }
 
 function findTravelTime(fromNodeId, toNodeId) {
+    // Parse the IDs to integers to ensure consistent comparison
+    const fromId = parseInt(fromNodeId);
+    const toId = parseInt(toNodeId);
+    
+    // Special case: same location
+    if (fromId === toId) return 0;
+    
     // Find the travel time between two nodes from our pre-calculated travel times
     const travelTime = travelTimes.find(
-        time => time.from_address_id === parseInt(fromNodeId) && time.to_address_id === parseInt(toNodeId)
+        time => time.from_address_id === fromId && time.to_address_id === toId
     );
     
     if (travelTime) {
         return travelTime.time_in_minutes;
     }
     
-    // If no direct travel time is found, return a large value
-    return 99999;
+    // Try to find alternative path (if A->B doesn't exist, try B->A)
+    const reverseTravelTime = travelTimes.find(
+        time => time.from_address_id === toId && time.to_address_id === fromId
+    );
+    
+    if (reverseTravelTime) {
+        console.log(`Using reverse travel time from ${toId} to ${fromId}: ${reverseTravelTime.time_in_minutes} min`);
+        return reverseTravelTime.time_in_minutes;
+    }
+    
+    // If no direct travel time is found, use a more reasonable fallback
+    console.error(`No travel time found from ${fromId} to ${toId}, using default value`);
+    return 20; // 20 minutes as fallback instead of 99999
 }
 
 function renderOptimizedRoute(routeIds, totalTime) {
