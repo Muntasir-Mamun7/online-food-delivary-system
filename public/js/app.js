@@ -614,13 +614,12 @@ function optimizeDeliveryRouteDynamicProgramming(startNodeId, orders) {
     function findBestRoute(mask, currentLoc, currentTime) {
         // If all customers are visited (all bits in mask are 1)
         if (mask === (1 << orders.length) - 1) {
-            // Return to restaurant
-            const timeToReturn = findTravelTime(currentLoc, startNodeId);
+            // MODIFIED: Don't return to restaurant
             return { 
-                time: timeToReturn, 
+                time: 0, // No return trip time
                 prev: -1,
                 isValid: true,
-                route: [startNodeId]
+                route: [] // Empty route since we don't return to restaurant
             };
         }
         
@@ -687,7 +686,7 @@ function optimizeDeliveryRouteDynamicProgramming(startNodeId, orders) {
     
     // Build the list of visited orders
     const visitedOrders = [];
-    for (let i = 1; i < finalRoute.length - 1; i++) {
+    for (let i = 1; i < finalRoute.length; i++) {
         const customerId = finalRoute[i];
         const orderIndex = customerToOrderIndex[customerId];
         if (orderIndex !== undefined) {
@@ -695,10 +694,16 @@ function optimizeDeliveryRouteDynamicProgramming(startNodeId, orders) {
         }
     }
     
+    // Calculate actual total time for the route (without returning to restaurant)
+    let actualTotalTime = 0;
+    for (let i = 0; i < finalRoute.length - 1; i++) {
+        actualTotalTime += findTravelTime(finalRoute[i], finalRoute[i + 1]);
+    }
+    
     return {
         route: finalRoute,
         visitedOrders: visitedOrders,
-        totalTime: result.time
+        totalTime: actualTotalTime
     };
 }
 
@@ -712,26 +717,43 @@ function findTravelTime(fromNodeId, toNodeId) {
     
     // Find the travel time between two nodes from our pre-calculated travel times
     const travelTime = travelTimes.find(
-        time => time.from_address_id === fromId && time.to_address_id === toId
+        time => parseInt(time.from_address_id) === fromId && parseInt(time.to_address_id) === toId
     );
     
     if (travelTime) {
-        return travelTime.time_in_minutes;
+        return parseInt(travelTime.time_in_minutes);
     }
     
     // Try to find alternative path (if A->B doesn't exist, try B->A)
     const reverseTravelTime = travelTimes.find(
-        time => time.from_address_id === toId && time.to_address_id === fromId
+        time => parseInt(time.from_address_id) === toId && parseInt(time.to_address_id) === fromId
     );
     
     if (reverseTravelTime) {
         console.log(`Using reverse travel time from ${toId} to ${fromId}: ${reverseTravelTime.time_in_minutes} min`);
-        return reverseTravelTime.time_in_minutes;
+        return parseInt(reverseTravelTime.time_in_minutes);
     }
     
-    // If no direct travel time is found, use a more reasonable fallback
-    console.error(`No travel time found from ${fromId} to ${toId}, using default value`);
-    return 20; // 20 minutes as fallback instead of 99999
+    // If no direct travel time is found, calculate a realistic fallback based on address locations
+    console.error(`No travel time found from ${fromId} to ${toId}, using calculated fallback`);
+    
+    // Find the address objects
+    const fromAddress = addresses.find(addr => addr.id === fromId);
+    const toAddress = addresses.find(addr => addr.id === toId);
+    
+    if (fromAddress && toAddress) {
+        // Simple distance calculation (approximation)
+        const distance = Math.sqrt(
+            Math.pow(fromAddress.latitude - toAddress.latitude, 2) + 
+            Math.pow(fromAddress.longitude - toAddress.longitude, 2)
+        );
+        
+        // Convert distance to minutes (rough estimation: 1 distance unit = 10 minutes)
+        const estimatedTime = Math.round(distance * 500);
+        return Math.max(5, Math.min(30, estimatedTime)); // Between 5-30 minutes
+    }
+    
+    return 15; // Default fallback of 15 minutes if we can't calculate
 }
 
 function renderOptimizedRoute(routeIds, totalTime) {
