@@ -357,6 +357,31 @@ app.post('/api/orders/:id/accept', checkAuthentication('courier'), (req, res) =>
   );
 });
 
+// Release order (return to pending state and remove courier assignment)
+app.post('/api/orders/:id/release', checkAuthentication('courier'), (req, res) => {
+  const orderId = req.params.id;
+  const courierId = req.session.user.id;
+  
+  db.run(
+    'UPDATE orders SET courier_id = NULL, status = "pending" WHERE id = ? AND courier_id = ? AND status = "accepted"',
+    [orderId, courierId],
+    function(err) {
+      if (err) {
+        return res.status(500).json({ error: 'Failed to release order' });
+      }
+      
+      if (this.changes === 0) {
+        return res.status(400).json({ error: 'Order cannot be released or does not exist' });
+      }
+      
+      res.json({
+        success: true,
+        message: 'Order released successfully and returned to available pool'
+      });
+    }
+  );
+});
+
 // Update order status
 app.put('/api/orders/:id/status', checkAuthentication(), (req, res) => {
   const orderId = req.params.id;
