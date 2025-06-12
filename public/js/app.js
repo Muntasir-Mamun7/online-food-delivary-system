@@ -427,6 +427,25 @@ async function updateOrderStatus(orderId, status) {
     }
 }
 
+// New function to release an order back to the available pool
+async function releaseOrder(orderId) {
+    try {
+        const response = await fetchAPI(`/api/orders/${orderId}/release`, {
+            method: 'POST'
+        });
+        
+        if (response.success) {
+            return true;
+        } else {
+            console.error('Failed to release order:', response.error);
+            return false;
+        }
+    } catch (err) {
+        console.error('Error releasing order:', err);
+        return false;
+    }
+}
+
 function setupAdminForms() {
     // User form
     const addUserBtn = document.getElementById('add-user-btn');
@@ -549,10 +568,14 @@ async function handleRouteOptimization() {
             }
         }
         
+        // Current time is used as the starting time for the algorithm
+        const now = new Date();
+        
         // Get restaurant locations and customer locations from orders
         const orderLocations = courierOrders.map(order => {
             return {
                 orderId: order.id,
+                originalOrderObject: order,  // Store the complete order object
                 restaurantId: parseInt(order.restaurant_address_id),
                 customerId: parseInt(order.customer_address_id),
                 dueTime: new Date(order.due_time).getTime()
@@ -564,8 +587,42 @@ async function handleRouteOptimization() {
         
         // Get the optimized route using dynamic programming
         console.time('Route Optimization');
-        const optimizedRoute = optimizeDeliveryRouteDynamicProgramming(restaurantId, orderLocations);
+        const optimizedRoute = optimizeDeliveryRouteDynamicProgramming(restaurantId, orderLocations, now.getTime());
         console.timeEnd('Route Optimization');
+        
+        // Check if there are orders that cannot be delivered on time
+        const undeliverableOrders = [];
+        const deliverableOrderIds = optimizedRoute.visitedOrders;
+        
+        // Find orders that couldn't be included in the optimal path
+        for (const orderLocation of orderLocations) {
+            if (!deliverableOrderIds.includes(orderLocation.orderId)) {
+                undeliverableOrders.push(orderLocation.originalOrderObject);
+            }
+        }
+        
+        // If there are undeliverable orders, release them back to the available pool
+        if (undeliverableOrders.length > 0) {
+            const releasePromises = undeliverableOrders.map(order => releaseOrder(order.id));
+            await Promise.all(releasePromises);
+            
+            // Get order names for notification
+            const undeliverableOrderNames = undeliverableOrders.map(order => {
+                const customerName = addresses.find(a => a.id === order.customer_address_id)?.name || 'Unknown';
+                return `#${order.id} (${customerName})`;
+            }).join(', ');
+            
+            showMessage('order-message', 
+                `Optimized route created! Warning: ${undeliverableOrders.length} order(s) (${undeliverableOrderNames}) cannot be delivered on time and have been returned to the available pool.`, 
+                'warning'
+            );
+            
+            // Reload courier orders and available orders to reflect the changes
+            await loadCourierOrders();
+            await loadAvailableOrders();
+        } else {
+            showMessage('order-message', 'Optimized route created! All orders can be delivered on time.', 'success');
+        }
         
         // Display the optimized route
         renderOptimizedRoute(optimizedRoute.route, optimizedRoute.totalTime);
@@ -580,7 +637,7 @@ async function handleRouteOptimization() {
 }
 
 // Dynamic Programming approach for route optimization
-function optimizeDeliveryRouteDynamicProgramming(startNodeId, orders) {
+function optimizeDeliveryRouteDynamicProgramming(startNodeId, orders, startTime) {
     // If no orders, return a route with just the restaurant
     if (orders.length === 0) {
         return { route: [startNodeId], visitedOrders: [], totalTime: 0 };
@@ -614,7 +671,7 @@ function optimizeDeliveryRouteDynamicProgramming(startNodeId, orders) {
     function findBestRoute(mask, currentLoc, currentTime) {
         // If all customers are visited (all bits in mask are 1)
         if (mask === (1 << orders.length) - 1) {
-            // MODIFIED: Don't return to restaurant
+            // Don't return to restaurant
             return { 
                 time: 0, // No return trip time
                 prev: -1,
@@ -643,7 +700,7 @@ function optimizeDeliveryRouteDynamicProgramming(startNodeId, orders) {
                 
                 // Calculate travel time to this customer
                 const travelTime = findTravelTime(currentLoc, customerId);
-                const arrivalTime = currentTime + travelTime;
+                const arrivalTime = currentTime + travelTime * 60000; // Convert minutes to milliseconds
                 
                 // Check if we can reach this customer before due time
                 if (arrivalTime <= orderDueTime) {
@@ -678,8 +735,13 @@ function optimizeDeliveryRouteDynamicProgramming(startNodeId, orders) {
         return result;
     }
     
-    // Start the algorithm with no customers visited, from the restaurant, at time 0
-    const result = findBestRoute(0, startNodeId, 0);
+    // Start the algorithm with no customers visited, from the restaurant, at the current time
+    const result = findBestRoute(0, startNodeId, startTime);
+    
+    // If no valid route was found, return empty route
+    if (!result.isValid) {
+        return { route: [startNodeId], visitedOrders: [], totalTime: 0 };
+    }
     
     // Build the complete route
     const finalRoute = [startNodeId, ...result.route];
