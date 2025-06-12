@@ -571,8 +571,13 @@ async function handleRouteOptimization() {
         // Current time is used as the starting time for the algorithm
         const now = new Date();
         
+        // Sort orders by due time (earliest first)
+        const sortedOrders = [...courierOrders].sort((a, b) => 
+            new Date(a.due_time).getTime() - new Date(b.due_time).getTime()
+        );
+        
         // Get restaurant locations and customer locations from orders
-        const orderLocations = courierOrders.map(order => {
+        const orderLocations = sortedOrders.map(order => {
             return {
                 orderId: order.id,
                 originalOrderObject: order,  // Store the complete order object
@@ -585,55 +590,118 @@ async function handleRouteOptimization() {
         // Find the restaurant (assuming all orders are from the same restaurant for simplicity)
         const restaurantId = orderLocations[0].restaurantId;
         
-        // Get the optimized route using dynamic programming
-        console.time('Route Optimization');
-        const optimizedRoute = optimizeDeliveryRouteDynamicProgramming(restaurantId, orderLocations, now.getTime());
-        console.timeEnd('Route Optimization');
+        // Get the deliverable orders using the memoization algorithm
+        const deliverableOrders = findMaxDeliverableOrders(restaurantId, orderLocations, now.getTime());
         
-        // Check if there are orders that cannot be delivered on time
-        const undeliverableOrders = [];
-        const deliverableOrderIds = optimizedRoute.visitedOrders;
-        
-        // Find orders that couldn't be included in the optimal path
-        for (const orderLocation of orderLocations) {
-            if (!deliverableOrderIds.includes(orderLocation.orderId)) {
-                undeliverableOrders.push(orderLocation.originalOrderObject);
-            }
+        // If no orders can be delivered on time, show a message
+        if (deliverableOrders.length === 0 && orderLocations.length > 0) {
+            showMessage('order-message', 'None of the orders can be delivered on time!', 'error');
+            return;
         }
         
-        // If there are undeliverable orders, release them back to the available pool
-        if (undeliverableOrders.length > 0) {
-            const releasePromises = undeliverableOrders.map(order => releaseOrder(order.id));
+        // Find orders that are in the current orders but not in the deliverable orders
+        const undeliverableOrders = orderLocations.filter(order => 
+            !deliverableOrders.some(deliverable => deliverable.orderId === order.orderId)
+        );
+        
+        // If there are more than 3 orders and only 2 can be delivered, release the undeliverable ones
+        if (undeliverableOrders.length > 0 && deliverableOrders.length > 0) {
+            // Try to release undeliverable orders
+            const releasePromises = undeliverableOrders.map(order => releaseOrder(order.orderId));
             await Promise.all(releasePromises);
             
-            // Get order names for notification
+            // Create names for message
             const undeliverableOrderNames = undeliverableOrders.map(order => {
-                const customerName = addresses.find(a => a.id === order.customer_address_id)?.name || 'Unknown';
-                return `#${order.id} (${customerName})`;
+                const customerName = addresses.find(a => a.id === order.customerId)?.name || 'Unknown';
+                return `#${order.orderId} (${customerName})`;
             }).join(', ');
             
             showMessage('order-message', 
-                `Optimized route created! Warning: ${undeliverableOrders.length} order(s) (${undeliverableOrderNames}) cannot be delivered on time and have been returned to the available pool.`, 
+                `Route optimized! ${undeliverableOrders.length} order(s) (${undeliverableOrderNames}) cannot be delivered on time and have been returned to the available orders.`, 
                 'warning'
             );
             
             // Reload courier orders and available orders to reflect the changes
             await loadCourierOrders();
             await loadAvailableOrders();
+            
+            // Get updated orders that are still assigned to the courier
+            const updatedOrders = await fetchAPI('/api/orders?role=courier');
+            
+            // If there are no orders left after optimization, no need to show route
+            if (updatedOrders.length === 0) {
+                return;
+            }
+            
+            // Re-optimize with the remaining orders
+            const remainingOrderLocations = updatedOrders.map(order => {
+                return {
+                    orderId: order.id,
+                    originalOrderObject: order,
+                    restaurantId: parseInt(order.restaurant_address_id),
+                    customerId: parseInt(order.customer_address_id),
+                    dueTime: new Date(order.due_time).getTime()
+                };
+            });
+            
+            // Get the optimized route for the deliverable orders
+            const optimizedRoute = optimizeDeliveryRouteDynamicProgramming(restaurantId, remainingOrderLocations, now.getTime());
+            
+            // Display the optimized route
+            renderOptimizedRoute(optimizedRoute.route, optimizedRoute.totalTime);
+            
+            // Update the map visualization
+            renderRouteOnMap(optimizedRoute.route);
         } else {
-            showMessage('order-message', 'Optimized route created! All orders can be delivered on time.', 'success');
+            // All orders can be delivered on time or there are no orders
+            // Get the optimized route for all orders
+            const optimizedRoute = optimizeDeliveryRouteDynamicProgramming(restaurantId, orderLocations, now.getTime());
+            
+            showMessage('order-message', 'Route optimized! All orders can be delivered on time.', 'success');
+            
+            // Display the optimized route
+            renderOptimizedRoute(optimizedRoute.route, optimizedRoute.totalTime);
+            
+            // Update the map visualization
+            renderRouteOnMap(optimizedRoute.route);
         }
-        
-        // Display the optimized route
-        renderOptimizedRoute(optimizedRoute.route, optimizedRoute.totalTime);
-        
-        // Update the map visualization
-        renderRouteOnMap(optimizedRoute.route);
         
     } catch (err) {
         console.error('Error optimizing route:', err);
         showMessage('order-message', 'Error optimizing route. Please try again.');
     }
+}
+
+// Function to find the maximum number of orders that can be delivered on time
+// This helps determine which orders to keep and which to release
+function findMaxDeliverableOrders(startNodeId, orders, startTime) {
+    // If no orders, return empty list
+    if (orders.length === 0) {
+        return [];
+    }
+    
+    // Convert to integers to ensure proper comparison
+    startNodeId = parseInt(startNodeId);
+    
+    // Try to include as many orders as possible, prioritizing earliest due times
+    let currentTime = startTime;
+    let currentLoc = startNodeId;
+    const deliverableOrders = [];
+    
+    // Since orders are already sorted by due time, try to deliver them in order
+    for (const order of orders) {
+        const customerId = order.customerId;
+        const travelTime = findTravelTime(currentLoc, customerId);
+        const arrivalTime = currentTime + travelTime * 60000; // Convert minutes to milliseconds
+        
+        if (arrivalTime <= order.dueTime) {
+            deliverableOrders.push(order);
+            currentTime = arrivalTime;
+            currentLoc = customerId;
+        }
+    }
+    
+    return deliverableOrders;
 }
 
 // Dynamic Programming approach for route optimization
